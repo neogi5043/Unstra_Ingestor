@@ -1,0 +1,25 @@
+{
+  "source_filename": "Doc1.pdf",
+  "document_type": "Sample Fillable PDF Form",
+  "generated_at": "2026-06-12T00:37:31.694175",
+  "model_used": "gpt-4.1-mini",
+  "fingerprints": [
+    "Please enter your name:",
+    "Please select an item from the combo/dropdown list:",
+    "Check all that apply:",
+    "You can add fields within tables as well:"
+  ],
+  "keys": {
+    "Please enter your name": "Please\\ enter\\ your\\ name[\\s:]*([A-Z0-9]+)",
+    "Name of Dependent": "Name\\ of\\ Dependent[\\s:]*([A-Z0-9]+)",
+    "Age of Dependent": "Age\\ of\\ Dependent[\\s:]*([\\d/\\-]+)"
+  },
+  "tables": [],
+  "checkbox_groups": {
+    "Check all that apply": [
+      "Option 1",
+      "Option 2",
+      "Option 3"
+    ]
+  }
+}
