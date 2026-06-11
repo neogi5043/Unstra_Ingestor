@@ -13,52 +13,52 @@ For **unknown PDFs** that don't match any built-in template, the system dynamica
 
 ```mermaid
 flowchart TD
-    %% Define Styles
-    classDef io fill:#f9f,stroke:#333,stroke-width:2px;
-    classDef process fill:#bbf,stroke:#333,stroke-width:2px;
-    classDef decision fill:#ff9,stroke:#333,stroke-width:2px;
-    classDef db fill:#bfb,stroke:#333,stroke-width:2px;
-    classDef external fill:#fbb,stroke:#333,stroke-width:2px;
+    InputPDF([Input PDF]) --> Uploader[core/uploader.py]
+    Uploader --> Classifier[core/classifier.py]
 
-    InputPDF([Input PDF]):::io --> Uploader[core/uploader.py]:::process
-    Uploader --> Classifier[core/classifier.py]:::process
-
-    subgraph "Per-Page Extraction Loop"
-        Classifier --> PageLoop[Process Each Page]:::process
+    subgraph "Phase 1: Page-Level Extraction (Sequential Loop)"
+        Classifier --> PageLoop[For Each Page]
         
-        PageLoop --> TextRouter{Is Scanned?}:::decision
-        TextRouter -->|No| NativeText[Native Text Extractor]:::process
-        TextRouter -->|Yes| AzureVision[Azure Vision OCR]:::external
+        PageLoop --> TextRouter{Is Scanned?}
+        TextRouter -->|No| NativeText[Native Text Extractor]
+        TextRouter -->|Yes| AzureVision[Azure Vision OCR]
         
-        NativeText --> PageText
-        AzureVision --> PageText(Aggregated Page Text)
+        NativeText --> PageText[Page Text & Images]
+        AzureVision --> PageText
         
-        PageLoop --> TableExt[Table Extractor]:::process
+        PageLoop --> TableExt[Table Extractor]
         TableExt --> RawTables(Raw Page Tables)
     end
 
-    subgraph "Post-Extraction Processing"
-        PageText --> CheckboxExt[Checkbox Extractor]:::process
-        CheckboxExt --> RawCheckboxes(Raw Checkboxes)
+    subgraph "Phase 2: Template Routing & KV Extraction"
+        PageText --> FullText(Aggregated Full Text)
         
-        PageText --> TempRouter{Match Built-in Static?}:::decision
-        TempRouter -->|Yes| ExecTemplate[Apply Template Regex]:::process
+        FullText --> TempRouter{Match Built-in Static?}
         
-        TempRouter -->|No| CacheCheck{Cached JSON Template?}:::decision
-        CacheCheck -->|Yes| LoadCache[Load Template]:::process
+        TempRouter -->|No| CacheCheck{Cached JSON Template?}
+        CacheCheck -->|Yes| LoadCache[Load Template]
         
-        CacheCheck -->|No| LLMGen[Azure OpenAI Generator]:::external
-        LLMGen --> SaveCache[(Save to Cache)]:::db
+        CacheCheck -->|No| LLMGen[Azure OpenAI Generator]
+        LLMGen --> SaveCache[(Save to Cache)]
         SaveCache --> LoadCache
         
+        TempRouter -->|Yes| ExecTemplate[Template Matcher]
         LoadCache --> ExecTemplate
+        
+        ExecTemplate --> KVPairs(Extracted Key-Value Pairs)
     end
 
-    subgraph "Data Refinement & Storage"
-        ExecTemplate --> KVPairs(Extracted Key-Value Pairs)
-        RawCheckboxes -->|Group via Template| RefinedCheckboxes(Categorized Checkboxes)
+    subgraph "Phase 3: Checkbox Extraction & Grouping"
+        FullText --> CheckboxExt[Checkbox Extractor]
+        CheckboxExt --> RawCheckboxes(Raw Checkboxes)
         
-        KVPairs --> DB[(PostgreSQL Database)]:::db
+        ExecTemplate -->|Provides LLM Groupings| CheckboxGroup[Group Checkboxes]
+        RawCheckboxes --> CheckboxGroup
+        CheckboxGroup --> RefinedCheckboxes(Categorized Checkboxes)
+    end
+
+    subgraph "Phase 4: Persistence"
+        KVPairs --> DB[(PostgreSQL Database)]
         RefinedCheckboxes --> DB
         RawTables --> DB
         PageText --> DB
