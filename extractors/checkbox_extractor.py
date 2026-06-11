@@ -124,10 +124,6 @@ _RAW_PATTERNS: list[tuple[str, bool]] = [
     # 🗹  BALLOT BOX WITH BOLD CHECK       (U+1F5F9)
     (_LEAD + r"[☑☒✓✔✅🗹]\s*" + _LABEL, True),
 
-    # ── Checked filled geometric shapes (used as radio / checkbox proxies) ─
-    # ■ ● ◉ ▪ ► — solid fills imply "selected"
-    (_LEAD + r"[■●◉▪►]\s*" + _LABEL, True),
-
     # ── Emoji square / box variants (Notion, Slack, Teams exports) ────────
     # ⬛ 🔳 — filled dark squares
     (_LEAD + r"[⬛🔳]\s*" + _LABEL, True),
@@ -155,12 +151,10 @@ _RAW_PATTERNS: list[tuple[str, bool]] = [
     (_LEAD + r"\|\s*" + _CHECKED_FILL + r"\s*\|\s*" + _LABEL, True),
 
     # ── Bare tick / cross with surrounding whitespace ─────────────────────
-    # A standalone ✓ or X — kept LAST among checked patterns so bracketed
-    # forms take priority.  Requires 1–4 spaces of separation to avoid
-    # matching stray characters inside words.
-    # Note: ✗ and ✘ are intentionally UNCHECKED (see below) — they denote
-    # negation/rejection, not affirmation.
-    (_LEAD + r"[Xx✓✔]\s{1,4}" + _LABEL, True),
+    # A standalone ✓ or ✔ — kept LAST among checked patterns so bracketed
+    # forms take priority. We DO NOT match bare 'x' or 'X' because it causes 
+    # massive false-positives with date masks (x x / x x) and signatures.
+    (_LEAD + r"[✓✔✅]\s{1,4}" + _LABEL, True),
 
     # ══════════════════════════════════════════════════════════════════════════
     # UNCHECKED

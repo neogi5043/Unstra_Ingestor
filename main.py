@@ -14,18 +14,14 @@ import concurrent.futures
 import warnings
 
 # Suppress noisy library warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="paddle")
 warnings.filterwarnings("ignore", module="requests")
-# Suppress paddle/paddlex log spam
-os.environ["PADDLEOCR_LOG_LEVEL"] = "ERROR"
-os.environ["FLAGS_allocator_strategy"] = "naive_best_fit" # standard paddle flag
-os.environ["GLOG_minloglevel"] = "2" # Suppress C++ logging
+
 import pdfplumber
 
 from core.uploader import upload_pdf
 from core.classifier import classify_document
 from extractors.text_extractor import extract_page_text, extract_page_images
-from extractors.ocr_extractor import ocr_page, ocr_image, preprocess_image
+from extractors.ocr_extractor import ocr_page, ocr_image
 from extractors.checkbox_extractor import extract_checkboxes
 from extractors.table_extractor import extract_tables_from_page
 from core.template_matcher import (
@@ -89,7 +85,7 @@ def process_page_worker(filepath, info):
                         
                         # Run OCR on the embedded image to determine its content
                         try:
-                            ocr_result = ocr_image(preprocess_image(img_info["image"])).strip()
+                            ocr_result = ocr_image(img_info["image"]).strip()
                         except Exception:
                             ocr_result = ""
                             
@@ -116,7 +112,7 @@ def process_page_worker(filepath, info):
                         continue
 
                 # If not a signature (or variance too low), attempt OCR
-                img_text = ocr_image(preprocess_image(img_info["image"])).strip()
+                img_text = ocr_image(img_info["image"]).strip()
                 if img_text:
                     page_text += "\n" + img_text
                     
@@ -155,8 +151,8 @@ def process_pdf(filepath, use_db=True):
     # Prepare args for process pool
     worker_args = [(filepath, info) for info in page_classifications]
 
-    # Process sequentially instead of ProcessPool to avoid C-library thread contention
-    # and catastrophic CPU thrashing (since PaddleOCR/oneDNN uses 100% of all cores natively).
+    # Process sequentially instead of ProcessPool to avoid excessive memory usage
+    # when processing many high-resolution pages concurrently.
     results = [process_page_worker(*args) for args in worker_args]
         
     for res in sorted(results, key=lambda x: x["page_number"]):
@@ -188,12 +184,21 @@ def process_pdf(filepath, use_db=True):
     checkbox_groups = get_llm_checkbox_groups(template_name)
     if checkbox_groups:
         for cb in all_checkboxes:
-            cb_label_lower = cb["label"].lower().strip()
-            # Try to find which group this option belongs to
+            # Clean OCR label: replace newlines with space, strip, lower
+            cb_label_clean = " ".join(cb["label"].lower().split())
+            
+            matched = False
             for group_name, options in checkbox_groups.items():
-                if any(opt.lower().strip() == cb_label_lower for opt in options):
-                    # Prepend the category to the label (e.g. "Gender: Male")
-                    cb["label"] = f"{group_name}: {cb['label']}"
+                for opt in options:
+                    opt_clean = " ".join(opt.lower().split())
+                    # Match if the OCR label starts with the template option
+                    # or contains it as a distinct word phrase.
+                    if cb_label_clean.startswith(opt_clean) or f" {opt_clean} " in f" {cb_label_clean} ":
+                        # Replace the noisy OCR label with the clean template option
+                        cb["label"] = f"{group_name}: {opt.strip()}"
+                        matched = True
+                        break
+                if matched:
                     break
 
 

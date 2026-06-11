@@ -19,8 +19,8 @@ graph TD
     C -->|Classify Page| D{Page Type?}
     
     D -->|Text| E(Text Extractor)
-    D -->|Scanned| F(OCR Extractor: PaddleOCR)
-    D -->|Mixed| G(Text Extractor + OCR on Images)
+    D -->|Scanned| F(OCR Extractor: Azure Vision)
+    D -->|Mixed| G(Text Extractor + Azure Vision on Images)
     
     E -->|Sequential Page Loop| H(Raw Text Aggregation)
     F -->|Sequential Page Loop| H
@@ -52,12 +52,12 @@ graph TD
 1. **Ingestion**: `core/uploader.py` validates the file type, checks file integrity, and opens the document via `pdfplumber`.
 2. **Classification**: `core/classifier.py` evaluates the density of the text layer on a given page versus the presence of embedded images to flag the page type.
 3. **Data Extraction Pipeline (Sequential)**:
-    - Processed sequentially page-by-page. PaddleOCR natively uses heavily-threaded `oneDNN` across all CPU cores, so we avoid Python multiprocessing to prevent catastrophic context-switching overhead.
+    - Processed sequentially page-by-page to prevent excessive memory usage.
     - **Native Text**: Handled purely by `extractors/text_extractor.py`.
-    - **Images & Scans**: Handled by `extractors/ocr_extractor.py` which uses PaddleOCR for high-accuracy text recognition.
-    - **Tables**: `extractors/table_extractor.py` utilizes a 2-tier extraction mechanism: 1) Native metadata grids (`pdfplumber`), and 2) Deep-learning layout analysis via **PP-Structure** (`paddleocr`) for complex/borderless tables.
+    - **Images & Scans**: Handled by `extractors/ocr_extractor.py` which uses **Azure OpenAI Vision** for high-accuracy, layout-preserving text recognition, avoiding native C++ library instability on Windows.
+    - **Tables**: `extractors/table_extractor.py` utilizes native metadata grids (`pdfplumber`) as the primary engine. If this fails on a scanned page, the system relies on the LLM's spatial awareness from the Vision OCR step to extract key-value representations of tables.
     - **Checkboxes**: `extractors/checkbox_extractor.py` searches for visual box markers using highly-accurate regex against natively extracted text.
-    - **Signatures & Images**: During iteration, embedded images undergo an **OpenCV Edge Density Variance check** (`Laplacian.var() > 100`). High variance images (signatures, logos) are cropped, bounding boxes are calculated, and the image is converted to Base64.
+    - **Signatures & Images**: During iteration, embedded images undergo an **OpenCV Edge Density Variance check** (`Laplacian.var() > 100`). High variance images (signatures, logos) are cropped, bounding boxes are calculated, and the image is converted to Base64. Low variance cropped images are forwarded to Azure Vision for text extraction.
 4. **Template Matching (3-Tier)**:
     - **Tier 1 — Static Templates**: `core/template_matcher.py` scores the text against 5 hardcoded templates.
     - **Tier 2 — Cached Generated Templates**: The system checks `generated_templates/` for a previously saved JSON template matching the PDF filename.
@@ -73,13 +73,12 @@ Optimizes processing time by ensuring computationally expensive OCR is only exec
 - **Logic**: Reads the amount of embedded text (`len(text) > TEXT_CHAR_THRESHOLD`). If the page contains text but also contains embedded images (like signatures or embedded graphs), it flags it as `text_with_images`.
 
 ### `extractors/ocr_extractor.py`
-Fallback engine for rasterized pages.
-- **Preprocessing**: Converts images to grayscale arrays, removing color artifacts.
-- **Engine**: **PaddleOCR** (Deep-learning based text recognition).
+Fallback engine for rasterized pages and embedded images.
+- **Engine**: **Azure OpenAI Vision** (`gpt-4.1-mini` or equivalent multimodal model). It processes raw image crops and returns structured text while preserving spatial layout, completely bypassing unstable local OCR libraries.
 
 ### `extractors/table_extractor.py`
-Deep-learning table layout parsing.
-- **Engine**: Falls back to `PPStructure` (part of PaddleOCR) for scanned pages. This replaces legacy OpenCV line-detection and Vertical Projection Profiles, seamlessly handling both grid and borderless tables.
+Primary table extraction engine.
+- **Engine**: `pdfplumber`. Provides highly accurate extraction for born-digital PDFs using native metadata. For scanned documents, it relies on Azure Vision's text representation.
 
 ### `core/template_matcher.py`
 The brain behind translating unstructured text strings into business data.

@@ -1,0 +1,146 @@
+{
+  "source_filename": "Sample filled Claim Form.pdf",
+  "document_type": "Health Insurance Claim Form",
+  "generated_at": "2026-06-11T22:50:56.350546",
+  "model_used": "gpt-4.1-mini",
+  "fingerprints": [
+    "CLAIM ACKNOWLEDGMENT SHEET",
+    "CLAIM DOCUMENT CHECK LIST",
+    "CLAIM FORM - PART A' to 'CLAIM FORM FOR HEALTH INSURANCE POLICIES OTHER THAN TRAVEL AND PERSONAL ACCIDENT - PART A",
+    "DECLARATION BY THE INSURED",
+    "GUIDANCE FOR FILLING CLAIM FORM - PART A (To be filled in by the insured)"
+  ],
+  "keys": {
+    "Name of Insurer": "Name\\ of\\ Insurer:\\ PHS\\ ID:\\ LMN1234\\ \\-\\-\\-\\ Enter\\ PHS[\\s:]*([A-Za-z ]{1,100})",
+    "PHS ID": "PHS\\ ID[\\s:]*([^\\n]+)",
+    "Insured Name": "Insured\\ Name:\\ Employee\\ No:\\ XYZ890\\ \\-\\-\\-\\ Enter\\ your[\\s:]*([^\\n]+)",
+    "Employee No": "Employee\\ No[\\s:]*([^\\n]+)",
+    "Patient Name": "Patient\\ Name[\\s:]*([^\\n]+)",
+    "Mobile No": "Mobile\\ No[\\s:]*([A-Z0-9]+)",
+    "Policy No": "Policy\\ No[\\s:]*([^\\n]+)",
+    "Phone (STD)": "Phone\\ \\(STD\\)[\\s:]*([^\\n]+)",
+    "Type of Claim": "Type\\ of\\ Claim\\ \\([\\s:]*([^\\n]+)",
+    "Claims Submitted by": "Claims\\ Submitted\\ by[\\s:]*([^\\n]+)",
+    "Claim Submitted by": "Claim\\ Submitted\\ by:\\ Mobile\\ No\\.[\\s:]*([^\\n]+)",
+    "Date of Claim Submission": "Submission[\\s:]*([^\\n]+)",
+    "Claim Submitted at": "Claim\\ Submitted\\ at[\\s:]*([^\\n]+)",
+    "DETAILS OF PRIMARY INSURED Policy No.": "Policy\\ No\\.[\\s:]*([^\\n]+)",
+    "DETAILS OF PRIMARY INSURED Company/ TPA ID No": "Company/\\ TPA\\ ID\\ No[\\s:]*([^\\n]+)",
+    "DETAILS OF PRIMARY INSURED Name": "Name[\\s:]*([A-Za-z ]{1,100})",
+    "DETAILS OF PRIMARY INSURED Address": "Address[\\s:]*([A-Za-z ]{1,100})",
+    "DETAILS OF PRIMARY INSURED City": "City[\\s:]*([A-Za-z ]{1,100})",
+    "DETAILS OF PRIMARY INSURED Pin Code": "Pin\\ Code[\\s:]*([^\\n]+)",
+    "DETAILS OF PRIMARY INSURED Phone No": "Phone\\ No[\\s:]*([A-Za-z ]{1,100})",
+    "DETAILS OF PRIMARY INSURED E mail ID": "Mail\\ ID\\ of[\\s:]*([^\\n]+)",
+    "DETAILS OF INSURANCE HISTORY Currently covered by any other Mediclaim / Health Insurance": "by\\ any\\ other\\ Mediclaim\\ /\\ Health\\ Insurance[\\s:]*([A-Za-z ]{1,100})",
+    "DETAILS OF INSURANCE HISTORY Date of commencement of first Insurance without break": "of\\ commencement\\ of\\ first\\ Insurance\\ without\\ break[\\s:]*([A-Za-z ]{1,100})",
+    "DETAILS OF INSURANCE HISTORY Previously covered by any other Mediclaim /Health insurance": "Insurance[\\s:]*([A-Za-z ]{1,100})",
+    "DETAILS OF INSURED PERSON HOSPITALIZED Name": "Name[\\s:]*([A-Za-z ]{1,100})",
+    "DETAILS OF INSURED PERSON HOSPITALIZED Gender": "Gender\\ E[\\s:]*([A-Za-z ]{1,100})",
+    "DETAILS OF INSURED PERSON HOSPITALIZED Relationship to Primary insured": "Relationship\\ to\\ Primary\\ insured[\\s:]*([^\\n]+)",
+    "DETAILS OF INSURED PERSON HOSPITALIZED Occupation": "Occupation[\\s:]*([^\\n]+)",
+    "DETAILS OF HOSPITALIZATION Name of Hospital where Admited": "Name\\ of\\ Hospital\\ where\\ Admited[\\s:]*([A-Za-z ]{1,100})",
+    "DETAILS OF HOSPITALIZATION Room Category occupied": "Room\\ Category\\ occupied[\\s:]*([^\\n]+)",
+    "DETAILS OF HOSPITALIZATION Hospitalization due to": "Hospitalization\\ due\\ to[\\s:]*([A-Za-z ]{1,100})",
+    "DETAILS OF CLAIM Pre -hospitalization expenses": "Pre\\ \\-hospitalization\\ expenses[\\s:]*([^\\n]+)",
+    "DETAILS OF CLAIM Hospitalization expenses": "Hospitalization\\ expenses[\\s:]*([^\\n]+)",
+    "DETAILS OF CLAIM Post-hospitalization expenses": "Post\\-hospitalization\\ expenses[\\s:]*([^\\n]+)",
+    "DETAILS OF CLAIM Ambulance Charges": "Ambulance\\ Charges[\\s:]*([^\\n]+)",
+    "DETAILS OF CLAIM Total": "Total[\\s:]*([^\\n]+)",
+    "DETAILS OF CLAIM Pre -hospitalization period": "Pre\\ \\-hospitalization\\ period[\\s:]*([^\\n]+)",
+    "DETAILS OF CLAIM Post -hospitalization period": "\\-hospitalization\\ period[\\s:]*([A-Za-z ]{1,100})",
+    "DETAILS OF CLAIM Claim for Domiciliary Hospitalization": "Claim\\ for\\ Domiciliary\\ Hospitalization[\\s:]*([^\\n]+)",
+    "DETAILS OF BILLS ENCLOSED Sl. No. 1 Bill No.": "Bill\\ No\\.\\ Date\\ Issued\\ by\\ Towards\\ Amount\\ \\(Rs\\)\\\n1\\.[\\s:]*([A-Za-z ]{1,100})",
+    "DETAILS OF BILLS ENCLOSED Sl. No. 2 Bill No.": "Bill\\ No\\.\\ Date\\ Issued\\ by\\ Towards\\ Amount\\ \\(Rs\\)\\\n1\\.[\\s:]*([A-Za-z ]{1,100})",
+    "DETAILS OF BILLS ENCLOSED Sl. No. 3 Bill No.": "Bill\\ No\\.\\ Date\\ Issued\\ by\\ Towards\\ Amount\\ \\(Rs\\)\\\n1\\.[\\s:]*([A-Za-z ]{1,100})",
+    "DETAILS OF BILLS ENCLOSED Sl. No. 4 Bill No.": "Bill\\ No\\.\\ Date\\ Issued\\ by\\ Towards\\ Amount\\ \\(Rs\\)\\\n1\\.[\\s:]*([A-Za-z ]{1,100})",
+    "DETAILS OF PRIMARY INSURED’S BANK ACCOUNT PAN": "PAN[\\s:]*([^\\n]+)",
+    "DETAILS OF PRIMARY INSURED’S BANK ACCOUNT Account Number": "Account\\ Number[\\s:]*([^\\n]+)",
+    "DETAILS OF PRIMARY INSURED’S BANK ACCOUNT Bank Name and Branch": "Bank\\ Name\\ and\\ Branch[\\s:]*([A-Za-z ]{1,100})"
+  },
+  "tables": [
+    {
+      "name": "Claim Document Check List",
+      "section_context": "CLAIM DOCUMENT CHECK LIST",
+      "header_pattern": "(Sr\\. No Description Remarks)",
+      "expected_columns": [
+        "Sr. No",
+        "Description",
+        "Remarks",
+        "Status(Y/N)"
+      ]
+    },
+    {
+      "name": "Details of Bills Enclosed",
+      "section_context": "DETAILS OF BILLS ENCLOSED",
+      "header_pattern": "(Sl\\. No\\. Bill No\\. Date Issued by Towards Amount \\(Rs\\))",
+      "expected_columns": [
+        "Sl. No.",
+        "Bill No.",
+        "Date",
+        "Issued by",
+        "Towards",
+        "Amount (Rs)"
+      ]
+    }
+  ],
+  "checkbox_groups": {
+    "Type of Claim": [
+      "Main Hospitalization",
+      "Pre-Post Hospitalization",
+      "OPD Claim",
+      "Deficiency Retrieval",
+      "Critical Illness",
+      "Cash Benefit"
+    ],
+    "Currently covered by any other Mediclaim / Health Insurance": [
+      "Yes",
+      "No"
+    ],
+    "Have you been hospitalized in the last four years since inception of the contract?": [
+      "Yes",
+      "No"
+    ],
+    "Previously covered by any other Mediclaim /Health insurance": [
+      "Yes",
+      "No"
+    ],
+    "Gender": [
+      "Male",
+      "Female"
+    ],
+    "Relationship to Primary insured": [
+      "Self",
+      "Spouse",
+      "Child",
+      "Father",
+      "Mother",
+      "Other (Please Specify)"
+    ],
+    "Occupation": [
+      "Service",
+      "Self Employed",
+      "Home Maker",
+      "Student",
+      "Retired",
+      "Other (Please Specify)"
+    ],
+    "Hospitalization due to": [
+      "Injury",
+      "Illness",
+      "Maternity"
+    ],
+    "Reported to Police": [
+      "Yes",
+      "No"
+    ],
+    "MLC Report & Police FIR attached": [
+      "Yes",
+      "No"
+    ],
+    "Claim for Domiciliary Hospitalization": [
+      "Yes",
+      "No"
+    ]
+  }
+}

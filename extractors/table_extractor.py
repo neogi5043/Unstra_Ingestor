@@ -39,14 +39,6 @@ import unicodedata
 import cv2
 import numpy as np
 
-# ── PPStructure ─────────────────────────────────────────────────────────────
-try:
-    from paddleocr import PPStructureV3
-    import pandas as pd
-    table_engine = PPStructureV3()
-except ImportError:
-    table_engine = None
-
 # ── Constants ──────────────────────────────────────────────────────────────
 _RASTER_DPI       = 200     # DPI for rasterization
 
@@ -76,70 +68,7 @@ def _rasterize(page, dpi: int = _RASTER_DPI):
 # Extraction strategies
 # ─────────────────────────────────────────────────────────────────────────────
 
-def extract_tables_ppstructure(page) -> list[dict]:
-    """
-    Use PaddleOCR's PP-Structure to natively extract tables from a rasterized page.
-    This entirely replaces the brittle OpenCV morphological lines and VPP borderless heuristics.
-    """
-    if table_engine is None:
-        print("[table] Error: PPStructure is not available. Please install paddleocr.")
-        return []
-
-    bgr, gray = _rasterize(page)
-    if bgr is None:
-        return []
-
-    extracted: list[dict] = []
-    
-    try:
-        # Run layout parsing and table extraction
-        if hasattr(table_engine, "predict"):
-            result_iter = table_engine.predict(bgr)
-            result = list(result_iter)[0] if result_iter else []
-            # In PaddleX PPStructureV3, results might not be directly iterable as regions.
-            # Convert to list to attempt matching the old format.
-            if hasattr(result, "get"):
-                result = [result]
-        else:
-            result = table_engine(bgr)
-        
-        # PPStructure returns a list of layout regions. We filter for Tables.
-        for region in result:
-            if region.get("type") == "Table":
-                html = region.get("res", {}).get("html", "")
-                if not html:
-                    continue
-                
-                try:
-                    # Use pandas to parse the HTML string back into a nested list
-                    dfs = pd.read_html(html)
-                    if not dfs:
-                        continue
-                    df = dfs[0]
-                    # Replace NaNs with empty string
-                    df = df.fillna("")
-                    
-                    # Convert to list of lists (string values)
-                    raw_table = df.values.tolist()
-                    # Also include columns as the first row if pandas parsed them as headers
-                    if list(df.columns) and not all(str(c).isdigit() for c in df.columns):
-                        raw_table.insert(0, [str(c) for c in df.columns])
-                    else:
-                        # If columns are just integer indices, ensure elements are strings
-                        raw_table = [[str(cell) for cell in row] for row in raw_table]
-                    
-                    normalized = normalize_table(raw_table)
-                    if normalized:
-                        extracted.append(normalized)
-                        
-                except Exception as e:
-                    print(f"[table] Error parsing PPStructure HTML with Pandas: {e}")
-                    
-    except Exception as e:
-        # Silently fallback to pdfplumber/OpenCV grids if Paddle/oneDNN crashes
-        pass
-
-    return extracted
+# (PaddleOCR PPStructureV3 fallback was removed due to Windows/oneDNN instability)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -193,11 +122,8 @@ def extract_tables_from_page(
             if normalized:
                 tables.append(_tag(normalized, "pdfplumber"))
 
-    # ── Strategy 2: PP-Structure Deep Learning Fallback ──────────
-    if not tables and page_type in ("scanned", "text_with_images"):
-        print(f"[table] Page {page_number}: trying PP-Structure table extraction...")
-        for t in extract_tables_ppstructure(page):
-            tables.append(_tag(t, "ppstructure"))
+    # For scanned pages or if pdfplumber fails, we rely on the Azure Vision OCR 
+    # and LLM extraction which works exceptionally well for capturing table layout and semantics.
 
     if tables:
         print(f"[table] Page {page_number}: found {len(tables)} table(s)")

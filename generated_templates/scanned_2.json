@@ -1,0 +1,34 @@
+{
+  "source_filename": "scanned 2.pdf",
+  "document_type": "Employee Information Form",
+  "generated_at": "2026-06-11T23:56:19.160756",
+  "model_used": "gpt-4.1-mini",
+  "fingerprints": [
+    "Employee Information Form (Sample)",
+    "Employee ID:",
+    "Employment Type:",
+    "Work Mode:",
+    "Employee Signature:"
+  ],
+  "keys": {
+    "Name": "Name[\\s:]*([A-Za-z ]{1,100})",
+    "Employee ID": "Employee\\ ID[\\s:]*([A-Z0-9]+)",
+    "Department": "Department[\\s:]*([A-Za-z ]{1,100})",
+    "Email": "Email[\\s:]*([^\\n]+)",
+    "Date": "Date[\\s:]*([^\\n]+)",
+    "Comments / Remarks": "Comments\\ /\\ Remarks[\\s:]*([^\\n]+)"
+  },
+  "tables": [],
+  "checkbox_groups": {
+    "Employment Type": [
+      "Full-Time",
+      "Part-Time",
+      "Contractor"
+    ],
+    "Work Mode": [
+      "Remote",
+      "Hybrid",
+      "On-Site"
+    ]
+  }
+}

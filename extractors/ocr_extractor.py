@@ -20,11 +20,24 @@ Hardening over original:
 
 import time
 import cv2
+import base64
 import numpy as np
+from io import BytesIO
 from PIL import Image, UnidentifiedImageError
 
-from paddleocr import PaddleOCR
-ocr_engine = PaddleOCR(use_angle_cls=False, lang='en')
+from openai import AzureOpenAI
+from config import (
+    AZURE_OPENAI_ENDPOINT,
+    AZURE_OPENAI_API_KEY,
+    AZURE_OPENAI_DEPLOYMENT_NAME,
+    AZURE_OPENAI_API_VERSION,
+)
+
+ocr_engine = AzureOpenAI(
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+    api_key=AZURE_OPENAI_API_KEY,
+    api_version=AZURE_OPENAI_API_VERSION,
+)
 
 # ── Constants ──────────────────────────────────────────────────────────────
 _MIN_DIMENSION  = 10    # pixels — smaller images are pure noise
@@ -219,8 +232,8 @@ def preprocess_image(
 
 def ocr_image(pil_image: Image.Image) -> str:
     """
-    Run PaddleOCR on a single PIL Image.
-
+    Run Azure OpenAI Vision on a single PIL Image.
+    
     Returns:
         The extracted string text, or empty string on failure.
     """
@@ -228,19 +241,35 @@ def ocr_image(pil_image: Image.Image) -> str:
         return ""
 
     try:
-        arr = _to_gray_array(pil_image)
-        # PaddleOCR expects BGR or RGB array, since it's gray we stack it
-        arr_bgr = cv2.cvtColor(arr, cv2.COLOR_GRAY2BGR)
-        result = ocr_engine.ocr(arr_bgr)
-        if not result or not result[0]:
-            return ""
-            
-        lines = [line[1][0] for line in result[0] if line and len(line) > 1 and len(line[1]) > 0]
-        return "\n".join(lines).strip()
+        buffered = BytesIO()
+        pil_image.save(buffered, format="PNG")
+        b64_img = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        
+        response = ocr_engine.chat.completions.create(
+            model=AZURE_OPENAI_DEPLOYMENT_NAME,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Extract all text from this image exactly as it appears. Do not add any markdown, explanation, or commentary. Preserve the spatial layout with line breaks."
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{b64_img}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=2500,
+            temperature=0.1
+        )
+        return response.choices[0].message.content.strip()
     except Exception as e:
-        error_str = str(e)
-        if "ConvertPirAttribute2RuntimeAttribute" not in error_str:
-            print(f"[ocr] Error processing image: {e}")
+        print(f"[ocr] Error processing image with Azure Vision: {e}")
         return ""
 
 
@@ -248,25 +277,10 @@ def ocr_image_with_retry(
     pil_image: Image.Image,
 ) -> str:
     """
-    OCR with automatic retry on low-yield first pass.
+    OCR with Azure Vision. No need for aggressive morphological retries
+    since Vision models prefer raw colored images.
     """
-    processed = preprocess_image(pil_image)
-    text = ocr_image(processed) if processed else ""
-
-    if len(text) < _MIN_CHARS:
-        print(f"[ocr] Warning — only {len(text)} chars found. PaddleOCR typically handles this without retry, but attempting raw image.")
-        try:
-            # Retry without morphological processing
-            raw_arr_bgr = cv2.cvtColor(_to_gray_array(pil_image), cv2.COLOR_GRAY2BGR)
-            raw_result = ocr_engine.ocr(raw_arr_bgr)
-            if raw_result and raw_result[0]:
-                lines = [line[1][0] for line in raw_result[0] if line and len(line) > 1 and len(line[1]) > 0]
-                raw_text = "\n".join(lines).strip()
-                if len(raw_text) > len(text):
-                    text = raw_text
-        except Exception:
-            pass
-
+    text = ocr_image(pil_image)
     return text
 
 
@@ -284,7 +298,7 @@ def ocr_page(page_obj) -> str:
         text = ocr_image_with_retry(pil_image)
         
         elapsed = time.time() - start_time
-        print(f"[ocr] Extracted {len(text)} chars via PaddleOCR in {elapsed:.2f}s")
+        print(f"[ocr] Extracted {len(text)} chars via Azure Vision in {elapsed:.2f}s")
         return text
     except Exception as e:
         print(f"[ocr] Pipeline failed: {e}")

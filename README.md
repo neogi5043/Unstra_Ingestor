@@ -4,18 +4,17 @@ An end-to-end Python pipeline designed to ingest unstructured PDF documents (tex
 
 ## Features
 - **Page-Level Classification**: Intelligently classifies pages as `text`, `scanned`, or `text_with_images` to optimize the extraction process.
-- **Hybrid Extraction**: Uses `pdfplumber` for native text/table extraction and **PaddleOCR** for Optical Character Recognition (OCR) on scanned pages or embedded images.
+- **Hybrid Extraction**: Uses `pdfplumber` for native text/table extraction and **Azure OpenAI Vision** for Optical Character Recognition (OCR) on scanned pages or embedded images.
 - **Template Matching**: Auto-detects document types using unique textual "fingerprints" and extracts dynamic key-value pairs based on predefined regex patterns. Ships with 5 built-in templates.
 - **LLM-Powered Dynamic Templates & Auto-Anchor**: Unknown PDFs are automatically sent to **Azure OpenAI**. Instead of generating brittle regex directly, the LLM identifies the raw string values of key fields. The pipeline then automatically generates robust, **Auto-Anchored Regex** patterns and caches them for future use.
-- **Multi-Tier Table Extraction**: Extracts tabular data using a 3-tier fallback system: 1) Native `pdfplumber` metadata grids, 2) **PP-Structure** deep learning layout analysis for borderless/complex tables.
-- **Signature & Image Extraction**: Identifies embedded images (like physical signatures or logos) by calculating OpenCV Edge Density Variance. Saves valid images as Base64 strings along with physical bounding box coordinates.
+- **Multi-Tier Table Extraction**: Extracts tabular data using native `pdfplumber` metadata grids. For scanned documents, it relies on Azure Vision's spatially-aware text extraction combined with LLM grouping.
+- **Signature & Image Extraction**: Identifies embedded images (like physical signatures or logos) by calculating OpenCV Edge Density Variance. Saves valid images as Base64 strings along with physical bounding box coordinates. Low-variance embedded image text is recovered via Azure Vision OCR.
 - **Structured Data Persistence**: Maps the extracted unstructured data into a structured relational PostgreSQL database.
 
 ## Prerequisites
 - **Python**: 3.12+
 - **PostgreSQL**: Local or Cloud instance (e.g., Aiven Cloud)
-- **PaddleOCR**: Installed via `pip install paddlepaddle paddleocr` for deep-learning based OCR and table layout extraction.
-- **Azure OpenAI** (for dynamic template generation): An Azure OpenAI resource with a deployed model (e.g., `gpt-4.1-mini`).
+- **Azure OpenAI** (for dynamic template generation and Vision OCR): An Azure OpenAI resource with a deployed multimodal model (e.g., `gpt-4.1-mini`).
 
 ## Installation
 
@@ -101,8 +100,8 @@ The pipeline uses a **3-tier matching strategy**:
   - `llm_template_generator.py` - Azure OpenAI integration for dynamic template generation, Auto-Anchored Regex creation, validation, and caching.
 - `extractors/`
   - `text_extractor.py` - Extracts text from native PDF text layers.
-  - `ocr_extractor.py` - Preprocesses images and extracts text via PaddleOCR.
-  - `table_extractor.py` - Extracts tables using pdfplumber natively, falling back to PaddleOCR's PP-Structure layout parser.
+  - `ocr_extractor.py` - Extracts unstructured text via Azure OpenAI Vision.
+  - `table_extractor.py` - Extracts tables using pdfplumber natively.
   - `checkbox_extractor.py` - Detects and categorizes checkboxes using regex and LLM groupings.
 - `database/`
   - `db.py` - Handles connection and inserts to PostgreSQL.
