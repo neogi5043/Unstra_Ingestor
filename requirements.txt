@@ -1,0 +1,8 @@
+pdfplumber
+pytesseract
+Pillow
+opencv-python
+psycopg2-binary
+numpy
+openai
+python-dotenv
