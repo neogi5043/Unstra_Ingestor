@@ -238,7 +238,9 @@ def ocr_image(pil_image: Image.Image) -> str:
         lines = [line[1][0] for line in result[0] if line and len(line) > 1 and len(line[1]) > 0]
         return "\n".join(lines).strip()
     except Exception as e:
-        print(f"[ocr] Error processing image: {e}")
+        error_str = str(e)
+        if "ConvertPirAttribute2RuntimeAttribute" not in error_str:
+            print(f"[ocr] Error processing image: {e}")
         return ""
 
 

@@ -22,9 +22,9 @@ graph TD
     D -->|Scanned| F(OCR Extractor: PaddleOCR)
     D -->|Mixed| G(Text Extractor + OCR on Images)
     
-    E --> H(Raw Text Aggregation)
-    F --> H
-    G --> H
+    E -->|Sequential Page Loop| H(Raw Text Aggregation)
+    F -->|Sequential Page Loop| H
+    G -->|Sequential Page Loop| H
     
     H --> I(Template Matcher)
     I -->|Static Match| J(Key-Value Extraction)
@@ -51,8 +51,8 @@ graph TD
 ### Flow Breakdown
 1. **Ingestion**: `core/uploader.py` validates the file type, checks file integrity, and opens the document via `pdfplumber`.
 2. **Classification**: `core/classifier.py` evaluates the density of the text layer on a given page versus the presence of embedded images to flag the page type.
-3. **Data Extraction Pipeline (Parallelized)**:
-    - Processed concurrently via `concurrent.futures.ProcessPoolExecutor` to bypass the GIL.
+3. **Data Extraction Pipeline (Sequential)**:
+    - Processed sequentially page-by-page. PaddleOCR natively uses heavily-threaded `oneDNN` across all CPU cores, so we avoid Python multiprocessing to prevent catastrophic context-switching overhead.
     - **Native Text**: Handled purely by `extractors/text_extractor.py`.
     - **Images & Scans**: Handled by `extractors/ocr_extractor.py` which uses PaddleOCR for high-accuracy text recognition.
     - **Tables**: `extractors/table_extractor.py` utilizes a 2-tier extraction mechanism: 1) Native metadata grids (`pdfplumber`), and 2) Deep-learning layout analysis via **PP-Structure** (`paddleocr`) for complex/borderless tables.

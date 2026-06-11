@@ -43,7 +43,14 @@ An end-to-end Python pipeline designed to ingest unstructured PDF documents (tex
    ```
 
 4. **Configure the application**:
-   Open `config.py` and update the database credentials to point to your PostgreSQL instance.
+   Open `.env` and append your database credentials to point to your PostgreSQL instance:
+   ```env
+   DB_HOST=your-db-host
+   DB_PORT=your-db-port
+   DB_NAME=your-db-name
+   DB_USER=your-db-user
+   DB_PASS=your-db-password
+   ```
 
 5. **Initialize the Database**:
    ```bash

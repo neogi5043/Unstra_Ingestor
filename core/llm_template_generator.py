@@ -324,7 +324,7 @@ def _validate_and_fix_patterns(template, sample_text):
                         idx = match.start()
             
             if idx == -1:
-                print(f"[llm]   [!!] {field_name}: value '{exact_value[:30]}' not found in sample -> skipping")
+                # print(f"[llm]   [!!] {field_name}: value '{exact_value[:30]}' not found in sample -> skipping")
                 continue
                 
             # Get context before the value
@@ -368,11 +368,11 @@ def _validate_and_fix_patterns(template, sample_text):
                     print(f"[llm]   [OK] {field_name}: auto-anchored regex captured '{match.group(1)[:60]}'")
                     valid_keys[field_name] = pattern
                 else:
-                    print(f"[llm]   [!!] {field_name}: auto-anchor match failed -> skipping")
+                    pass # print(f"[llm]   [!!] {field_name}: auto-anchor match failed -> skipping")
             except re.error as e:
-                print(f"[llm]   [!!] {field_name}: auto-anchor regex error: {e}")
+                pass # print(f"[llm]   [!!] {field_name}: auto-anchor regex error: {e}")
         else:
-            print(f"[llm]   [!!] {field_name}: label not found in context '{context}' -> skipping")
+            pass # print(f"[llm]   [!!] {field_name}: label not found in context '{context}' -> skipping")
 
     template["keys"] = valid_keys
 
