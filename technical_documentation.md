@@ -12,40 +12,58 @@ For **unknown PDFs** that don't match any built-in template, the system dynamica
 ## 1. System Architecture
 
 ```mermaid
-graph TD
-    A[Input PDF] --> B(Uploader)
-    B --> C(Classifier)
-    
-    C -->|Classify Page| D{Page Type?}
-    
-    D -->|Text| E(Text Extractor)
-    D -->|Scanned| F(OCR Extractor: Azure Vision)
-    D -->|Mixed| G(Text Extractor + Azure Vision on Images)
-    
-    E -->|Sequential Page Loop| H(Raw Text Aggregation)
-    F -->|Sequential Page Loop| H
-    G -->|Sequential Page Loop| H
-    
-    H --> I(Template Matcher)
-    I -->|Static Match| J(Key-Value Extraction)
-    I -->|No Match| K{Cached Template?}
-    
-    K -->|Yes| L(Load JSON Template)
-    K -->|No| M(LLM Template Generator)
-    M -->|Azure OpenAI| N(Generate Regex + Checkboxes + Table Hints)
-    N --> O(Save to generated_templates/)
-    O --> L
-    L --> J
-    
-    C --> P(Table Extractor)
-    C --> Q(Checkbox Extractor)
-    L -->|LLM Checkboxes| Q
-    L -->|LLM Table Hints| P
-    
-    J --> R[(PostgreSQL DB)]
-    P --> R
-    Q --> R
-    H --> R
+flowchart TD
+    %% Define Styles
+    classDef io fill:#f9f,stroke:#333,stroke-width:2px;
+    classDef process fill:#bbf,stroke:#333,stroke-width:2px;
+    classDef decision fill:#ff9,stroke:#333,stroke-width:2px;
+    classDef db fill:#bfb,stroke:#333,stroke-width:2px;
+    classDef external fill:#fbb,stroke:#333,stroke-width:2px;
+
+    InputPDF([Input PDF]):::io --> Uploader[core/uploader.py]:::process
+    Uploader --> Classifier[core/classifier.py]:::process
+
+    subgraph "Per-Page Sequential Loop"
+        Classifier --> PageRouter{Page Type?}:::decision
+        
+        PageRouter -->|text| NativeText[Text Extractor]:::process
+        PageRouter -->|scanned| AzureVision[Azure Vision OCR]:::external
+        PageRouter -->|text_with_images| HybridText[Native Text + Crop OCR]:::process
+        
+        NativeText --> RawText(Page Text Aggregation)
+        AzureVision --> RawText
+        HybridText --> RawText
+        
+        PageRouter -.-> TableExt[Table Extractor]:::process
+        TableExt --> RawTables(Page Tables)
+        
+        RawText -.-> CheckboxExt[Checkbox Extractor]:::process
+        CheckboxExt --> RawCheckboxes(Raw Checkboxes)
+    end
+
+    subgraph "Template Routing & Generation"
+        RawText --> TempRouter{Match Built-in Static?}:::decision
+        TempRouter -->|Yes| ExecTemplate[Apply Template Regex]:::process
+        
+        TempRouter -->|No| CacheCheck{Cached JSON Template?}:::decision
+        CacheCheck -->|Yes| LoadCache[Load Template]:::process
+        
+        CacheCheck -->|No| LLMGen[Azure OpenAI Generator]:::external
+        LLMGen --> SaveCache[(Save to Cache)]:::db
+        SaveCache --> LoadCache
+        
+        LoadCache --> ExecTemplate
+    end
+
+    subgraph "Data Refinement"
+        ExecTemplate --> KVPairs(Extracted Key-Value Pairs)
+        RawCheckboxes -->|Group via Template| RefinedCheckboxes(Categorized Checkboxes)
+    end
+
+    KVPairs --> DB[(PostgreSQL Database)]:::db
+    RefinedCheckboxes --> DB
+    RawTables --> DB
+    RawText --> DB
 ```
 
 ### Flow Breakdown
