@@ -93,7 +93,15 @@ def extract_tables_ppstructure(page) -> list[dict]:
     
     try:
         # Run layout parsing and table extraction
-        result = table_engine(bgr)
+        if hasattr(table_engine, "predict"):
+            result_iter = table_engine.predict(bgr)
+            result = list(result_iter)[0] if result_iter else []
+            # In PaddleX PPStructureV3, results might not be directly iterable as regions.
+            # Convert to list to attempt matching the old format.
+            if hasattr(result, "get"):
+                result = [result]
+        else:
+            result = table_engine(bgr)
         
         # PPStructure returns a list of layout regions. We filter for Tables.
         for region in result:
@@ -128,7 +136,8 @@ def extract_tables_ppstructure(page) -> list[dict]:
                     print(f"[table] Error parsing PPStructure HTML with Pandas: {e}")
                     
     except Exception as e:
-        print(f"[table] Error running PPStructure: {e}")
+        # Silently fallback to pdfplumber/OpenCV grids if Paddle/oneDNN crashes
+        pass
 
     return extracted
 

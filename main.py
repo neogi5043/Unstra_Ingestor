@@ -6,10 +6,20 @@ Usage:
     python main.py --batch <directory>     # process all PDFs in a folder
     python main.py --no-db <path_to_pdf>   # skip DB insert, print results only
 """
-
+import os
 import sys
+import time
 import json
 import concurrent.futures
+import warnings
+
+# Suppress noisy library warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="paddle")
+warnings.filterwarnings("ignore", module="requests")
+# Suppress paddle/paddlex log spam
+os.environ["PADDLEOCR_LOG_LEVEL"] = "ERROR"
+os.environ["FLAGS_allocator_strategy"] = "naive_best_fit" # standard paddle flag
+os.environ["GLOG_minloglevel"] = "2" # Suppress C++ logging
 import pdfplumber
 
 from core.uploader import upload_pdf
