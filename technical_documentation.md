@@ -23,26 +23,25 @@ flowchart TD
     InputPDF([Input PDF]):::io --> Uploader[core/uploader.py]:::process
     Uploader --> Classifier[core/classifier.py]:::process
 
-    subgraph "Per-Page Sequential Loop"
-        Classifier --> PageRouter{Page Type?}:::decision
+    subgraph "Per-Page Extraction Loop"
+        Classifier --> PageLoop[Process Each Page]:::process
         
-        PageRouter -->|text| NativeText[Text Extractor]:::process
-        PageRouter -->|scanned| AzureVision[Azure Vision OCR]:::external
-        PageRouter -->|text_with_images| HybridText[Native Text + Crop OCR]:::process
+        PageLoop --> TextRouter{Is Scanned?}:::decision
+        TextRouter -->|No| NativeText[Native Text Extractor]:::process
+        TextRouter -->|Yes| AzureVision[Azure Vision OCR]:::external
         
-        NativeText --> RawText(Page Text Aggregation)
-        AzureVision --> RawText
-        HybridText --> RawText
+        NativeText --> PageText
+        AzureVision --> PageText(Aggregated Page Text)
         
-        PageRouter -.-> TableExt[Table Extractor]:::process
-        TableExt --> RawTables(Page Tables)
-        
-        RawText -.-> CheckboxExt[Checkbox Extractor]:::process
-        CheckboxExt --> RawCheckboxes(Raw Checkboxes)
+        PageLoop --> TableExt[Table Extractor]:::process
+        TableExt --> RawTables(Raw Page Tables)
     end
 
-    subgraph "Template Routing & Generation"
-        RawText --> TempRouter{Match Built-in Static?}:::decision
+    subgraph "Post-Extraction Processing"
+        PageText --> CheckboxExt[Checkbox Extractor]:::process
+        CheckboxExt --> RawCheckboxes(Raw Checkboxes)
+        
+        PageText --> TempRouter{Match Built-in Static?}:::decision
         TempRouter -->|Yes| ExecTemplate[Apply Template Regex]:::process
         
         TempRouter -->|No| CacheCheck{Cached JSON Template?}:::decision
@@ -55,32 +54,35 @@ flowchart TD
         LoadCache --> ExecTemplate
     end
 
-    subgraph "Data Refinement"
+    subgraph "Data Refinement & Storage"
         ExecTemplate --> KVPairs(Extracted Key-Value Pairs)
         RawCheckboxes -->|Group via Template| RefinedCheckboxes(Categorized Checkboxes)
+        
+        KVPairs --> DB[(PostgreSQL Database)]:::db
+        RefinedCheckboxes --> DB
+        RawTables --> DB
+        PageText --> DB
     end
-
-    KVPairs --> DB[(PostgreSQL Database)]:::db
-    RefinedCheckboxes --> DB
-    RawTables --> DB
-    RawText --> DB
 ```
 
 ### Flow Breakdown
 1. **Ingestion**: `core/uploader.py` validates the file type, checks file integrity, and opens the document via `pdfplumber`.
 2. **Classification**: `core/classifier.py` evaluates the density of the text layer on a given page versus the presence of embedded images to flag the page type.
-3. **Data Extraction Pipeline (Sequential)**:
+3. **Phase 1: Page-Level Extraction (Sequential)**:
     - Processed sequentially page-by-page to prevent excessive memory usage.
     - **Native Text**: Handled purely by `extractors/text_extractor.py`.
-    - **Images & Scans**: Handled by `extractors/ocr_extractor.py` which uses **Azure OpenAI Vision** for high-accuracy, layout-preserving text recognition, avoiding native C++ library instability on Windows.
-    - **Tables**: `extractors/table_extractor.py` utilizes native metadata grids (`pdfplumber`) as the primary engine. If this fails on a scanned page, the system relies on the LLM's spatial awareness from the Vision OCR step to extract key-value representations of tables.
-    - **Checkboxes**: `extractors/checkbox_extractor.py` searches for visual box markers using highly-accurate regex against natively extracted text.
-    - **Signatures & Images**: During iteration, embedded images undergo an **OpenCV Edge Density Variance check** (`Laplacian.var() > 100`). High variance images (signatures, logos) are cropped, bounding boxes are calculated, and the image is converted to Base64. Low variance cropped images are forwarded to Azure Vision for text extraction.
-4. **Template Matching (3-Tier)**:
-    - **Tier 1 — Static Templates**: `core/template_matcher.py` scores the text against 5 hardcoded templates.
+    - **Images & Scans**: Handled by `extractors/ocr_extractor.py` which uses **Azure OpenAI Vision** for high-accuracy, layout-preserving text recognition.
+    - **Tables**: `extractors/table_extractor.py` utilizes native metadata grids (`pdfplumber`) as the primary engine inside the page loop.
+    - **Signatures & Images**: During iteration, embedded images undergo an OpenCV Edge Density Variance check. High variance images (signatures) are cropped and converted to Base64. Low variance images are forwarded to Azure Vision for OCR.
+4. **Phase 2: Template Routing & KV Extraction**:
+    - **Tier 1 — Static Templates**: `core/template_matcher.py` scores the aggregated text against 5 hardcoded templates.
     - **Tier 2 — Cached Generated Templates**: The system checks `generated_templates/` for a previously saved JSON template matching the PDF filename.
-    - **Tier 3 — LLM Generation**: `core/llm_template_generator.py` sends the extracted text to Azure OpenAI. Instead of brittle regex, the LLM identifies exact raw string values. The local system then programmatically generates robust, Auto-Anchored Regex patterns based on those values.
-5. **Persistence**: `database/db.py` inserts all results into a relational structure.
+    - **Tier 3 — LLM Generation**: `core/llm_template_generator.py` sends the extracted text to Azure OpenAI to generate auto-anchored regex patterns.
+    - **Execution**: The matched template is applied to the aggregated text to extract Key-Value pairs.
+5. **Phase 3: Checkbox Extraction & Grouping**:
+    - `extractors/checkbox_extractor.py` loops over the extracted text to find visual box markers using highly-accurate regex.
+    - The active Template applies context groupings to categorize these raw checkboxes.
+6. **Phase 4: Persistence**: `database/db.py` inserts all results into a relational structure.
 
 ---
 
