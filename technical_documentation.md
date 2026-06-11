@@ -20,13 +20,13 @@ flowchart TD
         Classifier --> PageLoop[For Each Page]
         
         PageLoop --> TextRouter{Is Scanned?}
-        TextRouter -->|No| NativeText[Native Text Extractor]
-        TextRouter -->|Yes| AzureVision[Azure Vision OCR]
+        TextRouter -->|No| NativeText[1. Native Text Extractor]
+        TextRouter -->|Yes| AzureVision[1. Azure Vision OCR]
         
         NativeText --> PageText[Page Text & Images]
         AzureVision --> PageText
         
-        PageLoop --> TableExt[Table Extractor]
+        PageText -.->|Next Step in Loop| TableExt[2. Table Extractor]
         TableExt --> RawTables(Raw Page Tables)
     end
 
