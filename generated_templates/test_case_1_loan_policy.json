@@ -1,0 +1,65 @@
+{
+  "source_filename": "TEST Case 1 Loan_Policy.pdf",
+  "document_type": "401(k) Plan Loan Administration Policy",
+  "generated_at": "2026-06-12T19:11:01.341202",
+  "model_used": "gpt-4.1-mini",
+  "fingerprints": [
+    "401(k) Plan Loan Administration Policy",
+    "Loan origination fee in the amount of $50.00",
+    "Loans are only permitted in the case of financial hardship",
+    "The interest rate on all loans made under this policy will be 1% over the Prime Rate",
+    "Scheduled payments must be made by payroll deduction",
+    "A loan can be paid in full at any time"
+  ],
+  "keys": {
+    "Plan Name": "Plan\\ Name[\\s:]*([^\\n]+)",
+    "Plan Number": "Plan\\ Number[\\s:]*([\\d/\\-]+)",
+    "Minimum vested account balance": "minimum\\ vested\\ account\\ balance\\ of[\\s:]*([^\\n]+)",
+    "Loan origination fee": "loan\\ origination\\ fee\\ in\\ the\\ amount\\ of[\\s:]*([^\\n]+)",
+    "Maintenance fee": "maintenance\\ fee\\ of[\\s:]*([^\\n]+)",
+    "Minimum loan amount": "loan\\ amount\\ that\\ a\\ participant\\ may\\ request\\ is[\\s:]*([^\\n]+)",
+    "Maximum loan amount": "loan\\ amount\\ that\\ a\\ participant\\ may\\ request\\ is[\\s:]*([^\\n]+)",
+    "Interest rate": "rate\\ on\\ all\\ loans\\ made\\ under\\ this\\ policy\\ will\\ be[\\s:]*([^\\n]+)",
+    "General Purpose Loan term": "term\\ of[\\s:]*([^\\n]+)",
+    "Principal Residence Loan term": "term\\ of[\\s:]*([^\\n]+)",
+    "Partial Loan Prepayments Option B": "Option\\ B\\ \\-\\ Principal\\ Reduction\\ \\-[\\s:]*([^\\n]+)"
+  },
+  "tables": [
+    {
+      "name": "Loan Fees and Charges",
+      "section_context": "Article II. Cost",
+      "header_pattern": "(Section 2\\.01 A loan origination fee in the amount of \\$50\\.00)",
+      "expected_columns": [
+        "Fee Type",
+        "Amount",
+        "Frequency/Notes"
+      ]
+    },
+    {
+      "name": "Loan Types and Terms",
+      "section_context": "Article VII. Types of loans available",
+      "header_pattern": "(Section 7\\.01 A General Purpose Loan has a term of twelve to sixty \\(12-60\\) months)",
+      "expected_columns": [
+        "Loan Type",
+        "Term (months)",
+        "Purpose",
+        "Interest Rate"
+      ]
+    }
+  ],
+  "checkbox_groups": {
+    "Loan Purpose Restrictions": [
+      "Loans are only permitted in the case of financial hardship. Applicants must submit proof of the hardship to the Plan Administrator."
+    ],
+    "Post-Termination Loan Repayment Options": [
+      "Option A. In the event that a participant defers distribution of their account balance, a loan offset will occur no later than the end of the month following the 60th",
+      "Option B. The participant may continue to repay the loan by making loan repayments to the Employer. The Employer will deposit the loan repayments in the Trust through the Employer’"
+    ],
+    "Partial Loan Prepayment Methods": [
+      "Option A - Advance Payments Through Payroll Withholding - A participant may choose to make two or more payments in advance through payroll withholding. These payments will be applied as follows",
+      "According to the current amortization schedule. Payments may not be made more than six months in advance",
+      "First to the current payment due, and then to the outstanding principal of the loan. The maturity date of the loan will be accelerated",
+      "Option B - Principal Reduction - A participant may make a payment of principal reduction. The amount will be applied first to any payments due and then to the outstanding principal of"
+    ]
+  }
+}

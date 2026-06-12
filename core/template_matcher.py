@@ -12,6 +12,9 @@ and caches them in generated_templates/ for future reuse.
 """
 
 import re
+import logging
+
+logger = logging.getLogger("template")
 
 from core.llm_template_generator import (
     get_or_generate_template,
@@ -53,31 +56,31 @@ TEMPLATES = {
     },
 
     # ── Template 2: Non-Standardized DC PPD Adoption Agreement ─────
-    "dc_ppd_adoption": {
-        "fingerprints": [
-            "Non-Standardized Defined Contribution - PPD",
-            "ADOPTION AGREEMENT #001",
-            "basic plan document #02",
-            "Adoption Agreement Elections",
-            "ARTICLE I",
-            "DEFINITIONS",
-        ],
-        "keys": {
-            "Employer Name":            r"1\.\s*EMPLOYER\s*\(1\.24\).*?Name[:\s]*(.+?)(?:\n|$)",
-            "Employer Address":         r"1\.\s*EMPLOYER.*?Address[:\s]*(.+?)(?:\n|$)",
-            "Employer TIN":             r"Taxpayer\s*Identification\s*Number\s*\(?TIN\)?[:\s]*(\S+)",
-            "Employer Email":           r"E-mail\s*\(?optional\)?[:\s]*(.+?)(?:\n|$)",
-            "Plan Name":               r"2\.\s*PLAN\s*\(1\.42\).*?Name[:\s]*(.+?)(?:\n|$)",
-            "Plan Number":             r"Plan\s*number[:\s]*(\S+)\s*\(3-digit",
-            "Trust Name":              r"Name\s*of\s*Trust[:\s]*(.+?)(?:\n|$)",
-            "Trust EIN":               r"Trust\s*EIN\s*\(?optional\)?[:\s]*(\S+)",
-            "Plan Year":              r"3\.\s*PLAN/LIMITATION\s*YEAR.*?(?:\[[\sxX]\]\s*)(December 31|Fiscal.*?ending:.*?)(?:\n|\.\n)",
-            "Effective Date":          r"4\.\s*EFFECTIVE\s*DATE.*?\(c\)\s*\[\s*\]\s*(.+?)(?:\s*\(hereinafter|\n)",
-            "Type of Plan":            r"5\.\s*TYPE\s*OF\s*PLAN.*?(?:\[[\sxX]\]\s*)(401\(k\)\s*Plan|Money Purchase|Profit Sharing)",
-            "Disability Definition":   r"7\.\s*DISABILITY.*?(?:\[[\sxX]\]\s*)(.+?)(?:\n|$)",
-            "Hours of Service Method": r"12\.\s*HOURS\s*OF\s*SERVICE.*?(?:\[[\sxX]\]\s*)(Actual Method|Equivalency|Elapsed Time|Actual.*?salaried)",
-        },
-    },
+    # "dc_ppd_adoption": {
+    #     "fingerprints": [
+    #         "Non-Standardized Defined Contribution - PPD",
+    #         "ADOPTION AGREEMENT #001",
+    #         "basic plan document #02",
+    #         "Adoption Agreement Elections",
+    #         "ARTICLE I",
+    #         "DEFINITIONS",
+    #     ],
+    #     "keys": {
+    #         "Employer Name":            r"1\.\s*EMPLOYER\s*\(1\.24\).*?Name[:\s]*(.+?)(?:\n|$)",
+    #         "Employer Address":         r"1\.\s*EMPLOYER.*?Address[:\s]*(.+?)(?:\n|$)",
+    #         "Employer TIN":             r"Taxpayer\s*Identification\s*Number\s*\(?TIN\)?[:\s]*(\S+)",
+    #         "Employer Email":           r"E-mail\s*\(?optional\)?[:\s]*(.+?)(?:\n|$)",
+    #         "Plan Name":               r"2\.\s*PLAN\s*\(1\.42\).*?Name[:\s]*(.+?)(?:\n|$)",
+    #         "Plan Number":             r"Plan\s*number[:\s]*(\S+)\s*\(3-digit",
+    #         "Trust Name":              r"Name\s*of\s*Trust[:\s]*(.+?)(?:\n|$)",
+    #         "Trust EIN":               r"Trust\s*EIN\s*\(?optional\)?[:\s]*(\S+)",
+    #         "Plan Year":              r"3\.\s*PLAN/LIMITATION\s*YEAR.*?(?:\[[\sxX]\]\s*)(December 31|Fiscal.*?ending:.*?)(?:\n|\.\n)",
+    #         "Effective Date":          r"4\.\s*EFFECTIVE\s*DATE.*?\(c\)\s*\[\s*\]\s*(.+?)(?:\s*\(hereinafter|\n)",
+    #         "Type of Plan":            r"5\.\s*TYPE\s*OF\s*PLAN.*?(?:\[[\sxX]\]\s*)(401\(k\)\s*Plan|Money Purchase|Profit Sharing)",
+    #         "Disability Definition":   r"7\.\s*DISABILITY.*?(?:\[[\sxX]\]\s*)(.+?)(?:\n|$)",
+    #         "Hours of Service Method": r"12\.\s*HOURS\s*OF\s*SERVICE.*?(?:\[[\sxX]\]\s*)(Actual Method|Equivalency|Elapsed Time|Actual.*?salaried)",
+    #     },
+    # },
 
     # ── Template 3: Master Service Agreement ───────────────────────
     "master_service_agreement": {
@@ -128,33 +131,33 @@ TEMPLATES = {
         },
     },
 
-    # ── Template 5: 401(k) Loan Policy ────────────────────────────
-    "loan_policy": {
-        "fingerprints": [
-            "Loan Administration Policy",
-            "401(k) Plan Loan",
-            "Plan Name:",
-            "Promissory Note",
-            "Article I. Eligibility",
-            "Loan Policy for Clients",
-        ],
-        "keys": {
-            "Plan Name":              r"Plan\s*Name[:\s]*(.+?)(?:\n|$)",
-            "Plan Number":            r"Plan\s*Number[:\s]*(\S+)",
-            "Min Vested Balance":     r"minimum\s*vested\s*account\s*balance\s*of\s*\$?([\d,]+(?:\.\d+)?)",
-            "Loan Origination Fee":   r"loan\s*origination\s*fee.*?\$?([\d,]+(?:\.\d+)?)",
-            "Maintenance Fee":        r"maintenance\s*fee\s*of\s*\$?([\d,]+(?:\.\d+)?)",
-            "Min Loan Amount":        r"minimum\s*loan\s*amount.*?\$?([\d,]+(?:\.\d+)?)",
-            "Max Loan Amount":        r"maximum\s*loan\s*amount.*?\$?([\d,]+(?:\.\d+)?)\s*or",
-            "Max Outstanding Loans":  r"(?:may\s*have|have)\s*(\d+)\s*loans?\s*outstanding",
-            "General Loan Term":      r"General\s*Purpose\s*Loan\s*has\s*a\s*term\s*of\s*([\w\s\-\(\)]+?)(?:\.|$)",
-            "Residence Loan Term":    r"Principal\s*Residence\s*Loan\s*has\s*a\s*term\s*of\s*([^\.]+)",
-            "Interest Rate":          r"interest\s*rate.*?(\d+%?\s*over\s*(?:the\s*)?Prime\s*Rate)",
-            "Certification Date":     r"(?:Dated\s*this)\s*(.+?)(?:\n|$)",
-            "Addendum Date":          r"(\d{1,2}/\d{1,2}/\d{2,4})\s+Plan\s*Administrator",
-            "Express Delivery Fee":   r"express\s*delivery.*?\$([\d,]+(?:\.\d+)?)",
-        },
-    },
+    # # ── Template 5: 401(k) Loan Policy ────────────────────────────
+    # "loan_policy": {
+    #     "fingerprints": [
+    #         "Loan Administration Policy",
+    #         "401(k) Plan Loan",
+    #         "Plan Name:",
+    #         "Promissory Note",
+    #         "Article I. Eligibility",
+    #         "Loan Policy for Clients",
+    #     ],
+    #     "keys": {
+    #         "Plan Name":              r"Plan\s*Name[:\s]*(.+?)(?:\n|$)",
+    #         "Plan Number":            r"Plan\s*Number[:\s]*(\S+)",
+    #         "Min Vested Balance":     r"minimum\s*vested\s*account\s*balance\s*of\s*\$?([\d,]+(?:\.\d+)?)",
+    #         "Loan Origination Fee":   r"loan\s*origination\s*fee.*?\$?([\d,]+(?:\.\d+)?)",
+    #         "Maintenance Fee":        r"maintenance\s*fee\s*of\s*\$?([\d,]+(?:\.\d+)?)",
+    #         "Min Loan Amount":        r"minimum\s*loan\s*amount.*?\$?([\d,]+(?:\.\d+)?)",
+    #         "Max Loan Amount":        r"maximum\s*loan\s*amount.*?\$?([\d,]+(?:\.\d+)?)\s*or",
+    #         "Max Outstanding Loans":  r"(?:may\s*have|have)\s*(\d+)\s*loans?\s*outstanding",
+    #         "General Loan Term":      r"General\s*Purpose\s*Loan\s*has\s*a\s*term\s*of\s*([\w\s\-\(\)]+?)(?:\.|$)",
+    #         "Residence Loan Term":    r"Principal\s*Residence\s*Loan\s*has\s*a\s*term\s*of\s*([^\.]+)",
+    #         "Interest Rate":          r"interest\s*rate.*?(\d+%?\s*over\s*(?:the\s*)?Prime\s*Rate)",
+    #         "Certification Date":     r"(?:Dated\s*this)\s*(.+?)(?:\n|$)",
+    #         "Addendum Date":          r"(\d{1,2}/\d{1,2}/\d{2,4})\s+Plan\s*Administrator",
+    #         "Express Delivery Fee":   r"express\s*delivery.*?\$([\d,]+(?:\.\d+)?)",
+    #     },
+    # },
 
     # ── Template 6: General / Scanned (fallback) ──────────────────
     "general_scanned": {
@@ -175,7 +178,7 @@ TEMPLATES = {
 # TEMPLATE MATCHING
 # ═══════════════════════════════════════════════════════════════════
 
-def match_template(full_text, filename=""):
+def match_template(full_text, filename="", checkboxes=None):
     """
     Score the extracted text against all template fingerprints.
     If no static template matches, check for cached generated templates
@@ -184,6 +187,7 @@ def match_template(full_text, filename=""):
     Args:
         full_text: concatenated text from all pages
         filename: original PDF filename (used for generated template lookup)
+        checkboxes: list of extracted checkboxes
 
     Returns:
         str: template name — either a static key (e.g., "loan_policy")
@@ -207,23 +211,22 @@ def match_template(full_text, filename=""):
             best_template = name
 
     if best_score > 0:
-        print(f"[template] Matched static template: {best_template} (score={best_score})")
+        logger.info("Matched static template: %s (score=%d)", best_template, best_score)
         return best_template
 
     # ── Step 2: No static match — try generated templates ────────
     if filename:
-        print(f"[template] No static template matched (score=0). "
-              f"Checking generated templates for '{filename}'...")
+        logger.info("No static template matched (score=0). Checking generated templates for '%s'...", filename)
 
-        template_key, template_dict = get_or_generate_template(full_text, filename)
+        template_key, template_dict = get_or_generate_template(full_text, filename, checkboxes)
 
         if template_key and template_dict:
             generated_name = f"generated:{template_key}"
-            print(f"[template] Using generated template: {generated_name}")
+            logger.info("Using generated template: %s", generated_name)
             return generated_name
 
     # ── Step 3: Complete fallback — general_scanned ──────────────
-    print(f"[template] Falling back to general_scanned")
+    logger.info("Falling back to general_scanned")
     return "general_scanned"
 
 
@@ -231,17 +234,17 @@ def match_template(full_text, filename=""):
 # KEY-VALUE EXTRACTION
 # ═══════════════════════════════════════════════════════════════════
 
-def extract_key_values(full_text, template_name):
+def extract_key_values(pages, template_name):
     """
     Extract key-value pairs using the matched template's regex patterns.
     Supports both static templates and generated (LLM) templates.
 
     Args:
-        full_text: concatenated text from all pages
+        pages: list of dicts, each with 'page_number' and 'text'.
         template_name: key from TEMPLATES dict or "generated:{name}"
 
     Returns:
-        list[dict]: each with key_name, value, confidence
+        list[dict]: each with key_name, value, confidence, page_number
     """
     # ── Resolve the template ─────────────────────────────────────
     if template_name.startswith("generated:"):
@@ -249,11 +252,13 @@ def extract_key_values(full_text, template_name):
         from core.llm_template_generator import load_generated_template
         template = load_generated_template(gen_name)
         if template is None:
-            print(f"[template] WARNING — Could not load generated template '{gen_name}', "
-                  f"falling back to general_scanned")
+            logger.warning("Could not load generated template '%s', falling back to general_scanned", gen_name)
             template = TEMPLATES["general_scanned"]
     else:
         template = TEMPLATES.get(template_name, TEMPLATES["general_scanned"])
+
+    # Build full text for fallback search
+    full_text = "\n".join(p["text"] for p in pages)
 
     # ── Extract key-value pairs using regex ──────────────────────
     results = []
@@ -265,19 +270,41 @@ def extract_key_values(full_text, template_name):
         if not template_name.startswith("generated:"):
             flags |= re.IGNORECASE
         
-        match = re.search(pattern, full_text, flags)
-        if match:
-            value = match.group(1).strip() if match.lastindex else match.group(0).strip()
-            # Clean up newlines in matched values
-            value = re.sub(r'\s+', ' ', value)
-            results.append({
-                "key_name": key_name,
-                "value": value,
-                "confidence": 1.0 if not template_name.startswith("generated:") else 0.85,
-                "page_number": None,
-                "source": "static" if not template_name.startswith("generated:") else "llm_generated",
-            })
-        else:
+        matched = False
+        
+        # 1. Try matching page by page to capture accurate page number
+        for p in pages:
+            match = re.search(pattern, p["text"], flags)
+            if match:
+                value = match.group(1).strip() if match.lastindex else match.group(0).strip()
+                value = re.sub(r'\s+', ' ', value)
+                results.append({
+                    "key_name": key_name,
+                    "value": value,
+                    "confidence": 1.0 if not template_name.startswith("generated:") else 0.85,
+                    "page_number": p["page_number"],
+                    "source": "static" if not template_name.startswith("generated:") else "llm_generated",
+                })
+                matched = True
+                break
+                
+        # 2. Fallback to full_text if the regex needs to span page boundaries
+        if not matched:
+            match = re.search(pattern, full_text, flags)
+            if match:
+                value = match.group(1).strip() if match.lastindex else match.group(0).strip()
+                value = re.sub(r'\s+', ' ', value)
+                results.append({
+                    "key_name": key_name,
+                    "value": value,
+                    "confidence": 1.0 if not template_name.startswith("generated:") else 0.85,
+                    "page_number": None,
+                    "source": "static" if not template_name.startswith("generated:") else "llm_generated",
+                })
+                matched = True
+
+        # 3. No match found at all
+        if not matched:
             results.append({
                 "key_name": key_name,
                 "value": None,
@@ -287,7 +314,7 @@ def extract_key_values(full_text, template_name):
             })
 
     found = sum(1 for r in results if r["value"])
-    print(f"[template] Extracted {found}/{len(results)} keys for '{template_name}'")
+    logger.info("Extracted %d/%d keys for '%s'", found, len(results), template_name)
     return results
 
 
@@ -317,9 +344,8 @@ def get_llm_table_hints(template_name):
         return []
 
     table_hints = template.get("tables", [])
-    table_hints = template.get("tables", [])
     if table_hints:
-        print(f"[template] LLM table hints: {len(table_hints)} table(s) expected")
+        logger.info("LLM table hints: %d table(s) expected", len(table_hints))
     return table_hints
 
 
@@ -349,5 +375,5 @@ def get_llm_checkbox_groups(template_name):
 
     groups = template.get("checkbox_groups", {})
     if groups:
-        print(f"[template] LLM checkbox groups: {len(groups)} group(s) expected")
+        logger.info("LLM checkbox groups: %d group(s) expected", len(groups))
     return groups

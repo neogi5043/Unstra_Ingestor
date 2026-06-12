@@ -7,7 +7,10 @@ Classifies each page as one of:
   - "text_with_images" → has text layer AND embedded images (e.g. signatures)
 """
 
+import logging
 from config import TEXT_CHAR_THRESHOLD
+
+logger = logging.getLogger("classifier")
 
 
 def classify_page(page):
@@ -48,6 +51,6 @@ def classify_document(pdf):
         info = classify_page(page)
         info["page_number"] = i + 1
         results.append(info)
-        print(f"[classifier] Page {i+1}: {info['type']}  "
-              f"(chars={info['char_count']}, images={info['image_count']})")
+        logger.info("Page %d: %s  (chars=%d, images=%d)",
+                    i+1, info['type'], info['char_count'], info['image_count'])
     return results

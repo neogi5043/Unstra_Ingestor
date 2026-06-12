@@ -3,9 +3,12 @@ db.py — PostgreSQL connector and data insertion helpers using psycopg2.
 """
 
 import json
+import logging
 import psycopg2
 from psycopg2.extras import execute_values, Json
 from config import DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS
+
+logger = logging.getLogger("db")
 
 
 def get_connection():
@@ -29,7 +32,16 @@ def init_schema(schema_path="database/schema.sql"):
     conn.commit()
     cur.close()
     conn.close()
-    print("[db] Schema initialized")
+    logger.info("Schema initialized")
+
+
+def check_document_exists(conn, content_hash):
+    """Check if a document with the given content_hash already exists."""
+    cur = conn.cursor()
+    cur.execute("SELECT doc_id FROM documents WHERE content_hash = %s", (content_hash,))
+    res = cur.fetchone()
+    cur.close()
+    return str(res[0]) if res else None
 
 
 def insert_document(conn, metadata):
@@ -46,22 +58,46 @@ def insert_document(conn, metadata):
     cur = conn.cursor()
     cur.execute(
         """
-        INSERT INTO documents (filename, template_type, page_count, classification)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO documents (filename, content_hash, template_type, page_count, classification, status)
+        VALUES (%s, %s, %s, %s, %s, 'processing')
         RETURNING doc_id
         """,
         (
             metadata["filename"],
+            metadata.get("content_hash"),
             metadata.get("template_type"),
             metadata["page_count"],
-            Json(metadata.get("classification", {})),
+            Json(metadata.get("classification", {})) if metadata.get("classification") else None,
         ),
     )
     doc_id = cur.fetchone()[0]
     conn.commit()
     cur.close()
-    print(f"[db] Inserted document: {doc_id}")
+    logger.info("Inserted document: %s", doc_id)
     return str(doc_id)
+
+
+def update_document(conn, doc_id, updates):
+    """
+    Update document fields dynamically.
+    Args:
+        updates: dict of column_name -> new_value
+    """
+    if not updates:
+        return
+    cur = conn.cursor()
+    
+    # Handle JSONB serialization for classification if present
+    if "classification" in updates and isinstance(updates["classification"], dict):
+        updates["classification"] = Json(updates["classification"])
+        
+    set_clause = ", ".join(f"{k} = %s" for k in updates.keys())
+    values = list(updates.values())
+    values.append(doc_id)
+    
+    cur.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = %s", tuple(values))
+    conn.commit()
+    cur.close()
 
 
 def insert_raw_pages(conn, doc_id, pages):
@@ -85,7 +121,7 @@ def insert_raw_pages(conn, doc_id, pages):
     )
     conn.commit()
     cur.close()
-    print(f"[db] Inserted {len(values)} raw pages")
+    logger.info("Inserted %d raw pages", len(values))
 
 
 def insert_key_values(conn, doc_id, kv_pairs):
@@ -109,7 +145,7 @@ def insert_key_values(conn, doc_id, kv_pairs):
     )
     conn.commit()
     cur.close()
-    print(f"[db] Inserted {len(values)} key-value pairs")
+    logger.info("Inserted %d key-value pairs", len(values))
 
 
 def insert_checkboxes(conn, doc_id, checkboxes):
@@ -133,7 +169,7 @@ def insert_checkboxes(conn, doc_id, checkboxes):
     )
     conn.commit()
     cur.close()
-    print(f"[db] Inserted {len(values)} checkboxes")
+    logger.info("Inserted %d checkboxes", len(values))
 
 
 def insert_tables(conn, doc_id, tables):
@@ -157,7 +193,7 @@ def insert_tables(conn, doc_id, tables):
         )
     conn.commit()
     cur.close()
-    print(f"[db] Inserted {len(tables)} tables")
+    logger.info("Inserted %d tables", len(tables))
 
 
 def insert_image_flags(conn, doc_id, image_flags):
@@ -183,4 +219,4 @@ def insert_image_flags(conn, doc_id, image_flags):
     )
     conn.commit()
     cur.close()
-    print(f"[db] Inserted {len(values)} image flags")
+    logger.info("Inserted %d image flags", len(values))

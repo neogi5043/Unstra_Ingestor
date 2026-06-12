@@ -3,10 +3,19 @@ config.py — Centralized configuration for the PDF Ingestor POC.
 """
 
 import os
+import logging
 from dotenv import load_dotenv
 
 # ── Load .env file ────────────────────────────────────────────────
 load_dotenv()
+
+# ── Logging ───────────────────────────────────────────────────────
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 # ── PostgreSQL (Aiven Cloud) ──────────────────────────────────────
 DB_HOST = os.getenv("DB_HOST", "pg-17c94819-exavalu-5b62.e.aivencloud.com")
@@ -38,3 +47,7 @@ AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-pre
 # ── Generated Templates ──────────────────────────────────────────
 GENERATED_TEMPLATES_DIR = "./generated_templates"
 LLM_TEXT_SAMPLE_LIMIT = 12000  # limit to ~12k chars to prevent LLM output from hitting max_token limits and taking too long
+
+# ── Azure Blob Storage ───────────────────────────────────────────
+AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
+AZURE_CONTAINER_NAME = os.getenv("AZURE_CONTAINER_NAME", "pdf-ingestor-data")

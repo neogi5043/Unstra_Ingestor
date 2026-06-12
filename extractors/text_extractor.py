@@ -29,9 +29,12 @@ Hardening over original:
 """
 
 import re
+import logging
 import unicodedata
 
 from PIL import Image
+
+logger = logging.getLogger("text")
 
 
 # ── Constants ──────────────────────────────────────────────────────────────
@@ -138,7 +141,7 @@ def extract_page_text(page, layout: bool = False) -> str:
         else:
             text = page.extract_text() or ""
     except Exception as e:
-        print(f"[text] extract_page_text failed: {e}")
+        logger.warning("extract_page_text failed: %s", e)
         return ""
 
     return _normalise_extracted_text(text)
@@ -209,7 +212,7 @@ def extract_page_images(
         page_render = page.to_image(resolution=resolution).original
         render_w, render_h = page_render.size
     except Exception as e:
-        print(f"[text] Failed to rasterize page for image extraction: {e}")
+        logger.warning("Failed to rasterize page for image extraction: %s", e)
         return images
 
     # ── Crop each embedded image ──────────────────────────────────
@@ -217,7 +220,7 @@ def extract_page_images(
         try:
             bbox = _get_bbox(img_meta)
             if bbox is None:
-                print(f"[text] Image {i}: unrecognised bbox keys {list(img_meta.keys())} — skipping")
+                logger.debug("Image %d: unrecognised bbox keys %s — skipping", i, list(img_meta.keys()))
                 continue
 
             x0, top, x1, bottom = bbox
@@ -236,7 +239,7 @@ def extract_page_images(
 
             # Skip degenerate crops
             if px1 <= px0 or py1 <= py0:
-                print(f"[text] Image {i}: degenerate crop {(px0, py0, px1, py1)} — skipping")
+                logger.debug("Image %d: degenerate crop %s — skipping", i, (px0, py0, px1, py1))
                 continue
 
             cropped = page_render.crop((px0, py0, px1, py1))
@@ -257,7 +260,7 @@ def extract_page_images(
             })
 
         except Exception as e:
-            print(f"[text] Image {i}: extraction failed: {e}")
+            logger.warning("Image %d: extraction failed: %s", i, e)
             continue
 
     return images

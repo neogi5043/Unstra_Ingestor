@@ -19,7 +19,10 @@ Coverage:
 """
 
 import re
+import logging
 import unicodedata
+
+logger = logging.getLogger("checkbox")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -77,10 +80,12 @@ def _normalise_text(text: str) -> str:
 _LEAD = r"(?:(?:^)|(?<=[^\w]))"
 
 # Label — what comes after the marker.
-# We restrict this to 1-4 words (up to ~40 chars) to prevent gobbling whole sentences.
+# We restrict this to 1-30 words to capture full sentence labels without gobbling the whole page.
+# The separator allows spaces and common punctuation, but STRICTLY EXCLUDES
+# brackets (), [], {}, <> to prevent gobbling the next checkbox marker.
 _LABEL = (
     r"("
-    r"(?:\b\w+\b[\s,:\-]*){1,4}"
+    r"(?:\b\w+\b[\s,:\-\.\'%/&\"’“”+$]*){1,30}"
     r")"
 )
 
@@ -252,8 +257,11 @@ def extract_checkboxes(text: str, page_number: int) -> list[dict]:
             if not label:
                 continue
 
-            # Normalise for dedup (case-fold, collapse runs of whitespace)
-            norm_label = re.sub(r"\s+", " ", label).lower()
+            # Clean up newlines and excessive spaces in the final label output
+            label = re.sub(r"\s+", " ", label)
+
+            # Normalise for dedup (case-fold)
+            norm_label = label.lower()
             dedup_key = (norm_label, is_checked)
             if dedup_key in seen_labels:
                 continue
@@ -269,5 +277,5 @@ def extract_checkboxes(text: str, page_number: int) -> list[dict]:
             )
 
     if found:
-        print(f"[checkbox] Page {page_number}: found {len(found)} checkboxes")
+        logger.info("Page %d: found %d checkboxes", page_number, len(found))
     return found

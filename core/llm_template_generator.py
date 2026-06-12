@@ -12,130 +12,30 @@ import os
 import re
 import json
 import time
+import logging
 import datetime
 import httpx
 from openai import AzureOpenAI
+from tenacity import retry, stop_after_attempt, wait_exponential
 from config import (
-    AZURE_OPENAI_ENDPOINT,
-    AZURE_OPENAI_API_KEY,
     AZURE_OPENAI_DEPLOYMENT_NAME,
-    AZURE_OPENAI_API_VERSION,
     GENERATED_TEMPLATES_DIR,
     LLM_TEXT_SAMPLE_LIMIT,
 )
+from llm.prompt import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE
+from llm.llm_client import get_client
+
+logger = logging.getLogger("llm")
 
 
-# ═══════════════════════════════════════════════════════════════════
-# SYSTEM PROMPT — Engineered for high-quality regex + checkbox/table
-# ═══════════════════════════════════════════════════════════════════
 
-SYSTEM_PROMPT = r"""\
-You are an expert document analysis and data extraction engineer specializing in PDF form parsing. \
-Your task is to analyze raw text extracted from a PDF document and produce a precise extraction template.
-
-You will receive the raw text of a document. You must:
-
-1. **Identify the document type** — Determine what kind of form, agreement, policy, or document this is.
-
-2. **Generate fingerprints** — Produce exactly 4-6 unique, verbatim phrases from the document that \
-reliably identify this specific document type. Choose phrases that:
-   - Are unlikely to appear in other document types
-   - Are structural headers, legal boilerplate titles, or form identifiers
-   - Are NOT variable data (no names, dates, amounts)
-   - Are at least 3 words long each
-
-3. **Extract exact string values** — For EVERY field that contains a \
-label-value pair (e.g., "Plan Name: ACME 401k"), provide the EXACT string value as it appears in the text.
-
-   EXTRACTION RULES (CRITICAL):
-   - Output the EXACT literal characters from the text. DO NOT write regex patterns here!
-   - If the text is a placeholder like "DD/MM/YYYY" or "PQR SURNAME", output exactly "DD/MM/YYYY" or "PQR SURNAME". DO NOT hallucinate a real date or a real name.
-   - E.g., if the text says "Patient Name: JOHN DOE", output `"Patient Name": "JOHN DOE"`.
-   - Extract ALL fields you can identify. Prioritize fields that carry business-critical data.
-
-4. **Generate table detection hints** — If the document contains tabular data:
-   - Identify table headers/column names
-   - Provide the approximate location context (e.g., what section or heading the table appears under)
-   - Provide a regex pattern to identify where the table region starts
-
-5. **Checkbox Groups** — Identify logically grouped checkboxes or radio buttons.
-   - For each group (e.g. "Gender", "Occupation"), list the exact string labels of the options (e.g. ["Male", "Female"]).
-   - DO NOT include the checked state, just the available options on the form.
-
-OUTPUT FORMAT — Return ONLY valid JSON, no markdown fences, no explanation text:
-{
-  "document_type": "Human-readable document type name",
-  "fingerprints": ["phrase1", "phrase2", "phrase3", "phrase4"],
-  "keys": {
-    "Field Name 1": "EXACT_VALUE_1",
-    "Field Name 2": "EXACT_VALUE_2"
-  },
-  "tables": [
-    {
-      "name": "Table name or description",
-      "section_context": "The heading or text that appears before this table",
-      "header_pattern": "regex_to_identify_table_start_region",
-      "expected_columns": ["Column1", "Column2", "Column3"]
-    }
-  ],
-  "checkbox_groups": {
-    "Group Name": ["Option 1", "Option 2"]
-  }
-}
-
-IMPORTANT:
-- If no tables are found, set "tables" to an empty array []
-- Extract ALL fields you can identify — err on the side of extracting more rather than fewer
-- Prioritize fields that carry business-critical data (names, IDs, dates, amounts, terms)
-- Double-check that every regex pattern has exactly ONE capture group
-"""
-
-USER_PROMPT_TEMPLATE = """\
-Analyze the following document text and generate a complete extraction template.
-
-The document filename is: "{filename}"
-
-DOCUMENT TEXT:
----
-{text_sample}
----
-
-Remember: Return ONLY valid JSON. No markdown code fences. No explanation text before or after the JSON.
-"""
-
-
-# ═══════════════════════════════════════════════════════════════════
-# CLIENT INITIALIZATION
-# ═══════════════════════════════════════════════════════════════════
-
-def _get_client():
-    """Create and return an Azure OpenAI client with a 60-second timeout."""
-    if not AZURE_OPENAI_API_KEY or not AZURE_OPENAI_ENDPOINT:
-        raise RuntimeError(
-            "[llm] Azure OpenAI not configured. "
-            "Set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT in .env"
-        )
-
-    # 180s timeout to allow long generation
-    timeout = httpx.Timeout(180.0, connect=15.0)
-
-    print(f"[llm] Connecting to: {AZURE_OPENAI_ENDPOINT}")
-    print(f"[llm] API version: {AZURE_OPENAI_API_VERSION}")
-    print(f"[llm] Deployment: {AZURE_OPENAI_DEPLOYMENT_NAME}")
-
-    return AzureOpenAI(
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,
-        api_key=AZURE_OPENAI_API_KEY,
-        api_version=AZURE_OPENAI_API_VERSION,
-        timeout=timeout,
-    )
 
 
 # ═══════════════════════════════════════════════════════════════════
 # TEMPLATE GENERATION VIA LLM
 # ═══════════════════════════════════════════════════════════════════
 
-def generate_template_from_text(full_text, pdf_filename):
+def generate_template_from_text(full_text, pdf_filename, checkboxes=None):
     """
     Send extracted PDF text to Azure OpenAI and get back a structured
     template with fingerprints, regex keys, checkbox patterns, and table hints.
@@ -143,6 +43,7 @@ def generate_template_from_text(full_text, pdf_filename):
     Args:
         full_text: concatenated text from all pages of the PDF
         pdf_filename: original filename of the PDF (e.g., "Invoice_Jan.pdf")
+        checkboxes: list of extracted checkboxes
 
     Returns:
         dict: template in the format compatible with TEMPLATES registry,
@@ -151,72 +52,82 @@ def generate_template_from_text(full_text, pdf_filename):
     # ── Truncate text to stay within token limits ────────────────
     text_sample = full_text[:LLM_TEXT_SAMPLE_LIMIT]
     if len(full_text) > LLM_TEXT_SAMPLE_LIMIT:
-        print(f"[llm] Text truncated from {len(full_text)} to {LLM_TEXT_SAMPLE_LIMIT} chars")
+        logger.info("Text truncated from %d to %d chars", len(full_text), LLM_TEXT_SAMPLE_LIMIT)
 
     # ── Build the prompt ─────────────────────────────────────────
+    checkbox_list_str = "None detected."
+    if checkboxes:
+        checkbox_list_str = "\n".join(f"- {cb['label']}" for cb in checkboxes)
+
     user_prompt = USER_PROMPT_TEMPLATE.format(
         filename=pdf_filename,
         text_sample=text_sample,
+        checkboxes=checkbox_list_str,
     )
 
     # ── Call Azure OpenAI ────────────────────────────────────────
-    print(f"[llm] Sending text to Azure OpenAI ({AZURE_OPENAI_DEPLOYMENT_NAME})...")
-    print(f"[llm] Prompt size: system={len(SYSTEM_PROMPT)} chars, user={len(user_prompt)} chars")
+    logger.info("Sending text to Azure OpenAI (%s)...", AZURE_OPENAI_DEPLOYMENT_NAME)
+    logger.info("Prompt size: system=%d chars, user=%d chars", len(SYSTEM_PROMPT), len(user_prompt))
     start_time = time.time()
     try:
-        client = _get_client()
+        client = get_client()
         import openai
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ]
 
-        # Try with JSON response format first, fall back without it
-        try:
-            response = client.chat.completions.create(
-                model=AZURE_OPENAI_DEPLOYMENT_NAME,
-                messages=messages,
-                temperature=0.1,
-                max_tokens=16384,
-                top_p=0.95,
-                response_format={"type": "json_object"},
-            )
-        except openai.BadRequestError as json_err:
-            print(f"[llm] JSON mode not supported, retrying without response_format: {json_err}")
-            response = client.chat.completions.create(
-                model=AZURE_OPENAI_DEPLOYMENT_NAME,
-                messages=messages,
-                temperature=0.1,
-                max_tokens=16384,
-                top_p=0.95,
-            )
+        @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+        def _call_api():
+            # Try with JSON response format first, fall back without it
+            try:
+                return client.chat.completions.create(
+                    model=AZURE_OPENAI_DEPLOYMENT_NAME,
+                    messages=messages,
+                    temperature=0.1,
+                    max_tokens=16384,
+                    top_p=0.95,
+                    response_format={"type": "json_object"},
+                )
+            except openai.BadRequestError as json_err:
+                logger.warning("JSON mode not supported, retrying without response_format: %s", json_err)
+                return client.chat.completions.create(
+                    model=AZURE_OPENAI_DEPLOYMENT_NAME,
+                    messages=messages,
+                    temperature=0.1,
+                    max_tokens=16384,
+                    top_p=0.95,
+                )
+
+        response = _call_api()
 
         elapsed = time.time() - start_time
-        print(f"[llm] Response received in {elapsed:.1f}s")
+        logger.info("Response received in %.1fs", elapsed)
     except httpx.TimeoutException as e:
         elapsed = time.time() - start_time
-        print(f"[llm] ERROR -- Request timed out after {elapsed:.1f}s: {e}")
+        logger.error("Request timed out after %.1fs: %s", elapsed, e)
         return None
     except Exception as e:
         elapsed = time.time() - start_time
-        print(f"[llm] ERROR -- Azure OpenAI call failed after {elapsed:.1f}s: {type(e).__name__}: {e}")
+        logger.error("Azure OpenAI call failed after %.1fs: %s: %s", elapsed, type(e).__name__, e)
         return None
 
     # ── Parse the response ───────────────────────────────────────
     raw_content = response.choices[0].message.content.strip()
-    print(f"[llm] Received {len(raw_content)} chars from LLM")
+    logger.info("Received %d chars from LLM", len(raw_content))
 
     template = _parse_llm_response(raw_content, pdf_filename)
     if template is None:
-        print("[llm] ERROR -- Failed to parse LLM response into valid template")
+        logger.error("Failed to parse LLM response into valid template")
         return None
 
     # ── Validate regex patterns ──────────────────────────────────
     template = _validate_and_fix_patterns(template, full_text)
 
-    print(f"[llm] Generated template with {len(template['keys'])} keys, "
-          f"{len(template.get('checkboxes', []))} checkbox groups, "
-          f"{len(template.get('tables', []))} table hints")
+    logger.info("Generated template with %d keys, %d checkbox groups, %d table hints",
+                len(template['keys']),
+                len(template.get('checkbox_groups', {})),
+                len(template.get('tables', [])))
     return template
 
 
@@ -242,7 +153,7 @@ def _parse_llm_response(raw_content, pdf_filename):
     try:
         data = json.loads(content)
     except json.JSONDecodeError as e:
-        print(f"[llm] JSON parse error: {e}")
+        logger.warning("JSON parse error: %s", e)
         # Try to find JSON object in the raw content
         match = re.search(r'\{[\s\S]*\}', raw_content)
         if match:
@@ -255,11 +166,11 @@ def _parse_llm_response(raw_content, pdf_filename):
 
     # ── Validate required fields ─────────────────────────────────
     if not isinstance(data.get("keys"), dict):
-        print("[llm] Invalid response: 'keys' field missing or not a dict")
+        logger.warning("Invalid response: 'keys' field missing or not a dict")
         return None
 
     if not isinstance(data.get("fingerprints"), list):
-        print("[llm] Warning: 'fingerprints' missing, using empty list")
+        logger.warning("'fingerprints' missing, using empty list")
         data["fingerprints"] = []
 
     # ── Normalize into our template format ───────────────────────
@@ -365,7 +276,7 @@ def _validate_and_fix_patterns(template, sample_text):
                 compiled = re.compile(pattern, re.MULTILINE | re.IGNORECASE)
                 match = compiled.search(sample_for_test)
                 if match:
-                    print(f"[llm]   [OK] {field_name}: auto-anchored regex captured '{match.group(1)[:60]}'")
+                    logger.info("  [OK] %s: auto-anchored regex captured '%s'", field_name, match.group(1)[:60])
                     valid_keys[field_name] = pattern
                 else:
                     pass # print(f"[llm]   [!!] {field_name}: auto-anchor match failed -> skipping")
@@ -388,7 +299,7 @@ def _validate_and_fix_patterns(template, sample_text):
                 re.compile(pat, re.IGNORECASE | re.MULTILINE)
                 valid_tables.append(tbl)
             except re.error as e:
-                print(f"[llm] WARNING -- Table regex error '{tbl.get('name')}': {e} -> skipping")
+                logger.warning("Table regex error '%s': %s -> skipping", tbl.get('name'), e)
         else:
             valid_tables.append(tbl)  # keep tables without regex (still useful metadata)
     template["tables"] = valid_tables
@@ -443,7 +354,7 @@ def save_template(template_dict, template_name):
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(template_dict, f, indent=2, ensure_ascii=False)
 
-    print(f"[llm] Saved template to: {filepath}")
+    logger.info("Saved template to: %s", filepath)
     return filepath
 
 
@@ -464,10 +375,10 @@ def load_generated_template(template_name):
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             template = json.load(f)
-        print(f"[llm] Loaded cached template: {filepath}")
+        logger.debug("Loaded cached template: %s", filepath)
         return template
     except (json.JSONDecodeError, IOError) as e:
-        print(f"[llm] WARNING -- Failed to load template {filepath}: {e}")
+        logger.warning("Failed to load template %s: %s", filepath, e)
         return None
 
 
@@ -491,7 +402,7 @@ def load_all_generated_templates():
             with open(filepath, "r", encoding="utf-8") as f:
                 templates[name] = json.load(f)
         except (json.JSONDecodeError, IOError) as e:
-            print(f"[llm] WARNING -- Skipping invalid template {fname}: {e}")
+            logger.warning("Skipping invalid template %s: %s", fname, e)
 
     return templates
 
@@ -500,13 +411,14 @@ def load_all_generated_templates():
 # HIGH-LEVEL ORCHESTRATOR
 # ═══════════════════════════════════════════════════════════════════
 
-def get_or_generate_template(full_text, pdf_filename):
+def get_or_generate_template(full_text, pdf_filename, checkboxes=None):
     """
     Main entry point — check for a cached generated template, or create one via LLM.
 
     Args:
         full_text: concatenated text from all pages
         pdf_filename: original PDF filename
+        checkboxes: list of extracted checkboxes
 
     Returns:
         tuple: (template_name, template_dict) or (None, None) on failure
@@ -516,14 +428,34 @@ def get_or_generate_template(full_text, pdf_filename):
     # ── 1. Check if we already have a generated template for this file ──
     cached = load_generated_template(template_key)
     if cached is not None:
-        print(f"[llm] Using cached template for '{pdf_filename}' -> {template_key}")
+        logger.info("Using cached template for '%s' -> %s", pdf_filename, template_key)
         return template_key, cached
 
+    # ── 1.5. Cross-file template matching by fingerprints ────────
+    all_generated = load_all_generated_templates()
+    best_score = 0
+    best_key = None
+    
+    text_clean = " ".join(full_text.lower().split())
+    for gen_key, gen_tmpl in all_generated.items():
+        score = 0
+        for fp in gen_tmpl.get("fingerprints", []):
+            fp_clean = " ".join(fp.lower().split())
+            if fp_clean in text_clean:
+                score += 1
+        if score > best_score:
+            best_score = score
+            best_key = gen_key
+
+    if best_score >= 3:
+        logger.info("Matched existing generated template by fingerprints: %s (score=%d)", best_key, best_score)
+        return best_key, all_generated[best_key]
+
     # ── 2. No cache — generate via LLM ──────────────────────────
-    print(f"[llm] No cached template for '{pdf_filename}' -- generating via LLM...")
-    template = generate_template_from_text(full_text, pdf_filename)
+    logger.info("No cached template for '%s' -- generating via LLM...", pdf_filename)
+    template = generate_template_from_text(full_text, pdf_filename, checkboxes)
     if template is None:
-        print(f"[llm] Template generation failed for '{pdf_filename}'")
+        logger.error("Template generation failed for '%s'", pdf_filename)
         return None, None
 
     # ── 3. Save for future reuse ─────────────────────────────────

@@ -3,7 +3,10 @@ uploader.py — PDF upload, validation, and loading.
 """
 
 import os
+import logging
 import pdfplumber
+
+logger = logging.getLogger("uploader")
 
 
 def upload_pdf(filepath):
@@ -30,5 +33,5 @@ def upload_pdf(filepath):
         "pdf_info": pdf.metadata,
     }
 
-    print(f"[uploader] Loaded '{metadata['filename']}' — {metadata['page_count']} pages")
+    logger.info("Loaded '%s' — %d pages", metadata['filename'], metadata['page_count'])
     return pdf, metadata

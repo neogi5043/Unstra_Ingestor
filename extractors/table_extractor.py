@@ -1,43 +1,27 @@
 """
 table_extractor.py — Table detection and extraction from PDF pages.
 
-Uses pdfplumber's built-in table detection for text pages.
-For scanned pages, falls back to OpenCV grid detection, then VPP (Vertical
-Projection Profile) for borderless tables.
+Extraction strategy waterfall:
+  1. Azure Vision (primary) — rasterizes the page and sends it to Azure
+     OpenAI Vision to extract structured table JSON (headers + rows).
+  2. pdfplumber native (fallback) — for text/text_with_images pages when
+     Azure Vision finds no tables.
 
-Hardening over original:
-  - extract_tables_opencv:
-      • Guards against mask overflow (clips to uint8 range before adding).
-      • Row-grouping tolerance made adaptive (5% of image height, not hardcoded 15px).
-      • Table-split gap made adaptive (3% of image height, not hardcoded 50px).
-      • Wraps every pytesseract call so a single bad cell can't abort the table.
-      • Skips zero-area cell crops instead of passing them to Tesseract.
-      • Uses BGR→GRAY for Tesseract (not full BGR) — cleaner input.
-  - extract_tables_vpp:
-      • Removes duplicate top-level imports (cv2/np/pytesseract already imported).
-      • Adaptive row/col gap thresholds (fraction of image dimension).
-      • Handles edge case where in_col is still True at end of projection loop.
-      • Clamps cell crop coordinates to image bounds.
-      • Wraps Tesseract call per cell.
-  - extract_tables_from_page:
-      • Catches exception from page.extract_tables() so a corrupt text page
-        doesn't abort the whole document.
-      • Consistent table_index across all three extraction paths.
-  - normalize_table:
-      • Handles ragged rows (rows with fewer cols than the widest row) by
-        padding with empty strings rather than raising IndexError.
-      • Returns None for tables where every header cell is empty.
-  - _clean_cell:
-      • Normalises Unicode whitespace (NBSP, thin-space, etc.).
-      • Collapses internal multi-space runs into a single space.
-      • Strips common PDF extraction artefacts (soft-hyphen U+00AD).
+Normalisation:
+  - normalize_table: cleans cells, pads ragged rows, drops empty
+    columns/rows, rejects degenerate tables.
+  - _clean_cell: strips zero-width chars, soft-hyphens, collapses
+    whitespace, and normalises Unicode.
 """
 
 import re
+import logging
 import unicodedata
 
 import cv2
 import numpy as np
+
+logger = logging.getLogger("table")
 
 # ── Constants ──────────────────────────────────────────────────────────────
 _RASTER_DPI       = 200     # DPI for rasterization
@@ -56,7 +40,7 @@ def _rasterize(page, dpi: int = _RASTER_DPI):
     try:
         pil_image = page.to_image(resolution=dpi).original
     except Exception as e:
-        print(f"[table] Error rasterizing page: {e}")
+        logger.warning("Error rasterizing page: %s", e)
         return None, None
 
     bgr = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
@@ -109,12 +93,29 @@ def extract_tables_from_page(
         table_counter += 1
         return t
 
-    # ── Strategy 1: pdfplumber native ───────────────────────────
-    if page_type in ("text", "text_with_images"):
+    # ── Strategy 1: Azure Vision (Primary) ───────────────────────────
+    try:
+        from extractors.ocr_extractor import extract_tables_with_vision, rasterize_page
+        pil_image = rasterize_page(page, resolution=300)
+        if pil_image:
+            vision_tables = extract_tables_with_vision(pil_image)
+            for v_table in vision_tables:
+                headers = v_table.get("headers", [])
+                rows = v_table.get("rows", [])
+                # Reconstruct raw table for normalize_table
+                raw_table = [headers] + rows if headers else rows
+                normalized = normalize_table(raw_table)
+                if normalized:
+                    tables.append(_tag(normalized, "azure_vision"))
+    except Exception as e:
+        logger.warning("Page %d: Azure Vision extraction failed: %s", page_number, e)
+
+    # ── Strategy 2: pdfplumber native (Fallback) ───────────────────────────
+    if not tables and page_type in ("text", "text_with_images"):
         try:
             raw_tables = page.extract_tables() or []
         except Exception as e:
-            print(f"[table] Page {page_number}: pdfplumber extract_tables() failed: {e}")
+            logger.warning("Page %d: pdfplumber extract_tables() failed: %s", page_number, e)
             raw_tables = []
 
         for raw_table in raw_tables:
@@ -122,11 +123,8 @@ def extract_tables_from_page(
             if normalized:
                 tables.append(_tag(normalized, "pdfplumber"))
 
-    # For scanned pages or if pdfplumber fails, we rely on the Azure Vision OCR 
-    # and LLM extraction which works exceptionally well for capturing table layout and semantics.
-
     if tables:
-        print(f"[table] Page {page_number}: found {len(tables)} table(s)")
+        logger.info("Page %d: found %d table(s)", page_number, len(tables))
     return tables
 
 

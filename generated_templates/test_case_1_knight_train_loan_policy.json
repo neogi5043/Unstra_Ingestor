@@ -1,0 +1,66 @@
+{
+  "source_filename": "TEST Case 1_Knight Train Loan_Policy.pdf",
+  "document_type": "401(k) Plan Loan Administration Policy",
+  "generated_at": "2026-06-12T20:24:52.359069",
+  "model_used": "gpt-4.1-mini",
+  "fingerprints": [
+    "401(k) Plan Loan Administration Policy",
+    "Loan Policy for Clients",
+    "Loans are only permitted in the case of financial hardship",
+    "The interest rate on all loans will be 1% over the Prime Rate",
+    "Scheduled payments must be made by payroll deduction",
+    "This Loan Administration Policy has been developed to comply with the requirements of Internal Revenue Code section 72(p)"
+  ],
+  "keys": {
+    "Plan Name": "Plan\\ Name[\\s:]*([^\\n]+)",
+    "Plan Number": "Plan\\ Number[\\s:]*([\\d/\\-]+)",
+    "Loan origination fee": "loan\\ origination\\ fee\\ in\\ the\\ amount\\ of[\\s:]*([^\\n]+)",
+    "Maintenance fee deducted quarterly": "deducted\\ quarterly\\ at\\ a\\\nrate\\ of[\\s:]*([^\\n]+)",
+    "Minimum loan amount": "loan\\ amount\\ that\\ a\\ participant\\ may\\ request\\ is[\\s:]*([^\\n]+)",
+    "Maximum loan amount": "loan\\ amount\\ that\\ a\\ participant\\ may\\ request\\ is[\\s:]*([^\\n]+)",
+    "Number of loans permitted at one time": "at\\ one\\ time\\ is[\\s:]*([^\\n]+)",
+    "Interest rate on all loans": "rate\\ on\\ all\\ loans\\ made\\ under\\ this\\ policy\\ will\\ be[\\s:]*([^\\n]+)",
+    "Loans are only permitted in the case of financial hardship": "only\\ permitted\\ in\\ the\\ case\\ of\\ financial\\ hardship\\.[\\s:]*([A-Za-z ]{1,100})",
+    "Option B - Principal Reduction": "Option\\ B\\ \\-\\ Principal\\ Reduction\\ \\-[\\s:]*([^\\n]+)"
+  },
+  "tables": [
+    {
+      "name": "Loan Fees and Charges",
+      "section_context": "Article II. Cost",
+      "header_pattern": "(Section 2\\.01 A loan origination fee in the amount of \\$50\\.00 shall be deducted from the loan amount approved\\.)",
+      "expected_columns": [
+        "Fee Type",
+        "Amount",
+        "Frequency",
+        "Notes"
+      ]
+    },
+    {
+      "name": "Loan Types and Terms",
+      "section_context": "Article VII. Types of loans available",
+      "header_pattern": "(Section 7\\.01 A General Purpose Loan has a term of twelve to sixty \\(12-60\\) months\\.)",
+      "expected_columns": [
+        "Loan Type",
+        "Term (months)",
+        "Purpose",
+        "Interest Rate",
+        "Documentation Required"
+      ]
+    }
+  ],
+  "checkbox_groups": {
+    "Loan Purpose Restrictions": [
+      "Loans are only permitted in the case of financial hardship. Applicants must submit proof of the hardship to the Plan Administrator. For this purpose, financial hardship is as defined under"
+    ],
+    "Loan Offset Options After Termination": [
+      "Option A. In the event that a participant defers distribution of their account balance, a loan offset will occur no later than the end of the month following the 60th",
+      "Option B. The participant may continue to repay the loan by making loan repayments to the Employer. The Employer will deposit the loan repayments in the Trust through the Employer’"
+    ],
+    "Partial Loan Prepayments": [
+      "Option A - Advance Payments Through Payroll Withholding - A participant may choose to make two or more payments in advance through payroll withholding. These payments will be applied as follows",
+      "According to the current amortization schedule. Payments may not be made more than six months in advance",
+      "First to the current payment due, and then to the outstanding principal of the loan. The maturity date of the loan will be accelerated",
+      "Option B - Principal Reduction - A participant may make a payment of principal reduction. The amount will be applied first to any payments due and then to the outstanding principal of"
+    ]
+  }
+}

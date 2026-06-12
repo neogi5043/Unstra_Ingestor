@@ -1,14 +1,14 @@
 {
   "source_filename": "scanned 2.pdf",
   "document_type": "Employee Information Form",
-  "generated_at": "2026-06-12T00:26:05.840031",
+  "generated_at": "2026-06-12T20:50:18.297586",
   "model_used": "gpt-4.1-mini",
   "fingerprints": [
     "Employee Information Form (Sample)",
-    "Employee ID:",
-    "Employment Type:",
-    "Work Mode:",
-    "Employee Signature:"
+    "Employee ID",
+    "Employment Type",
+    "Work Mode",
+    "Employee Signature"
   ],
   "keys": {
     "Name": "Name[\\s:]*([A-Za-z ]{1,100})",

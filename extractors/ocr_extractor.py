@@ -1,29 +1,30 @@
 """
-ocr_extractor.py — OCR pipeline using Tesseract (pytesseract).
+ocr_extractor.py — OCR and vision pipeline using Azure OpenAI Vision.
 
-Handles: rasterize page → preprocess → Tesseract OCR → return text.
+Handles: rasterize page → send to Azure Vision → return text.
 
-Hardening over original:
-  - rasterize_page: catches pdfplumber rendering exceptions; validates the
-    returned object is a PIL Image before use.
-  - preprocess_image: handles RGBA / palette / already-grayscale images;
-    guards against empty / zero-dimension arrays; makes deskew optional via
-    flag; uses configurable h for denoising.
-  - ocr_image: validates mode before Tesseract; supports multi-language via
-    argument; returns empty string (never raises) on any failure.
-  - ocr_page: exposes resolution & lang overrides; logs timing; returns ""
-    gracefully on any pipeline failure so callers never see an exception.
-  - New: deskew() — auto-rotates pages that are skewed up to ±45°.
-  - New: ocr_image_with_retry() — retries with relaxed preprocessing if
-    the first pass yields fewer than MIN_CHARS characters.
+Functions:
+  - rasterize_page: converts pdfplumber page to PIL Image for Vision API.
+  - preprocess_image: grayscale conversion, optional deskew, denoise, threshold
+    for local pre-processing before Vision API (used selectively).
+  - ocr_image: sends a PIL Image to Azure OpenAI Vision for text extraction.
+  - ocr_page: full pipeline — rasterize + Vision OCR for a single page.
+  - classify_image_with_vision: classifies embedded images (Signature, Logo, etc.)
+    using Azure Vision.
+  - extract_tables_with_vision: extracts structured table JSON from page images
+    using Azure Vision.
 """
 
 import time
+import logging
 import cv2
 import base64
 import numpy as np
 from io import BytesIO
 from PIL import Image, UnidentifiedImageError
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+logger = logging.getLogger("ocr")
 
 from openai import AzureOpenAI
 from config import (
@@ -136,7 +137,7 @@ def deskew(gray: np.ndarray) -> np.ndarray:
         )
         return rotated
     except Exception as e:
-        print(f"[ocr] deskew failed (ignored): {e}")
+        logger.debug("deskew failed (ignored): %s", e)
         return gray
 
 
@@ -157,17 +158,17 @@ def rasterize_page(page, resolution: int = 300) -> Image.Image | None:
     """
     if resolution < 72:
         resolution = 72
-        print(f"[ocr] Warning: resolution clamped to 72 DPI (requested value too low)")
+        logger.warning("Warning: resolution clamped to 72 DPI (requested value too low)")
 
     try:
         page_image = page.to_image(resolution=resolution)
         img = page_image.original
     except Exception as e:
-        print(f"[ocr] Error rasterizing page: {e}")
+        logger.error("Error rasterizing page: %s", e)
         return None
 
     if not isinstance(img, Image.Image):
-        print(f"[ocr] Unexpected rasterize return type: {type(img)}")
+        logger.warning("Unexpected rasterize return type: %s", type(img))
         return None
 
     return img
@@ -207,7 +208,7 @@ def preprocess_image(
     try:
         gray = _to_gray_array(pil_image)
     except (ValueError, Exception) as e:
-        print(f"[ocr] preprocess: grayscale conversion failed: {e}")
+        logger.warning("preprocess: grayscale conversion failed: %s", e)
         return None
 
     if apply_deskew:
@@ -230,7 +231,8 @@ def preprocess_image(
     return Image.fromarray(thresh)
 
 
-def ocr_image(pil_image: Image.Image) -> str:
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+def ocr_image(pil_image: Image.Image, lang: str = "en") -> str:
     """
     Run Azure OpenAI Vision on a single PIL Image.
     
@@ -269,7 +271,7 @@ def ocr_image(pil_image: Image.Image) -> str:
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"[ocr] Error processing image with Azure Vision: {e}")
+        logger.error("Error processing image with Azure Vision: %s", e)
         return ""
 
 
@@ -286,20 +288,103 @@ def ocr_image_with_retry(
 
 def ocr_page(page_obj) -> str:
     """
-    Rasterize a pdfplumber page, preprocess, and extract text using PaddleOCR.
+    Rasterize a pdfplumber page and extract text using Azure OpenAI Vision.
     """
     start_time = time.time()
     try:
         pil_image = rasterize_page(page_obj, resolution=300)
         if pil_image is None:
-            print("[ocr] Rasterization failed — returning empty string")
+            logger.warning("Rasterization failed — returning empty string")
             return ""
         
         text = ocr_image_with_retry(pil_image)
         
         elapsed = time.time() - start_time
-        print(f"[ocr] Extracted {len(text)} chars via Azure Vision in {elapsed:.2f}s")
+        logger.info("Extracted %d chars via Azure Vision in %.2fs", len(text), elapsed)
         return text
     except Exception as e:
-        print(f"[ocr] Pipeline failed: {e}")
+        logger.error("Pipeline failed: %s", e)
         return ""
+
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+def classify_image_with_vision(pil_image: Image.Image) -> str:
+    """Classify an embedded image using Azure Vision."""
+    if pil_image.size[0] < _MIN_DIMENSION or pil_image.size[1] < _MIN_DIMENSION:
+        return "unclassified_image"
+
+    try:
+        buffered = BytesIO()
+        pil_image.save(buffered, format="PNG")
+        b64_img = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        
+        response = ocr_engine.chat.completions.create(
+            model=AZURE_OPENAI_DEPLOYMENT_NAME,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Classify this image into a short 1-3 word category (e.g., 'Signature', 'Logo', 'Stamp', 'Diagram', 'Portrait', 'Checkbox'). Return only the category string without any markdown or quotes."
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{b64_img}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=10,
+            temperature=0.1
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        logger.error("Error classifying image with Azure Vision: %s", e)
+        return "unclassified_image"
+
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+def extract_tables_with_vision(pil_image: Image.Image) -> list[dict]:
+    """Extract tables using Azure Vision."""
+    if pil_image.size[0] < _MIN_DIMENSION or pil_image.size[1] < _MIN_DIMENSION:
+        return []
+
+    try:
+        buffered = BytesIO()
+        pil_image.save(buffered, format="PNG")
+        b64_img = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        
+        response = ocr_engine.chat.completions.create(
+            model=AZURE_OPENAI_DEPLOYMENT_NAME,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": 'Extract all tables from this image. Return a JSON object with a single key "tables", which is an array of objects. Each table object must have a "headers" key (list of strings) and a "rows" key (list of lists of strings). If no tables are found, return {"tables": []}. Return ONLY valid JSON.'
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{b64_img}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=4000,
+            temperature=0.1,
+            response_format={"type": "json_object"}
+        )
+        content = response.choices[0].message.content.strip()
+        
+        import json
+        data = json.loads(content)
+        return data.get("tables", [])
+    except Exception as e:
+        logger.error("Error extracting tables with Azure Vision: %s", e)
+        return []
