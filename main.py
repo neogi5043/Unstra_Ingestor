@@ -180,9 +180,9 @@ def process_pdf(filepath, use_db=True, skip_blob=False):
         # Prepare args for process pool
         worker_args = [(filepath, info) for info in page_classifications]
     
-        # Process using ThreadPoolExecutor for E9
+        # Process using ProcessPoolExecutor for E9 (Thread pool crashes PDFPlumber C extensions)
         results = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=4) as executor:
             futures = [executor.submit(process_page_worker, *args) for args in worker_args]
             for future in concurrent.futures.as_completed(futures):
                 results.append(future.result())
