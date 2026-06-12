@@ -5,11 +5,11 @@ This document provides a highly detailed architectural diagram of the PDF Ingest
 ```mermaid
 flowchart TD
     %% Global Styling
-    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
-    classDef input fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
-    classDef azure fill:#e8f5e9,stroke:#388e3c,stroke-width:2px;
-    classDef db fill:#fff3e0,stroke:#f57c00,stroke-width:2px;
-    classDef logic fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px,color:#000;
+    classDef input fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#000;
+    classDef azure fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#000;
+    classDef db fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#000;
+    classDef logic fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#000;
 
     %% Entry Point
     InputPDF([Input PDF Document]):::input
