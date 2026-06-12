@@ -13,16 +13,16 @@ For **unknown PDFs** that don't match any built-in template, the system dynamica
 
 ```mermaid
 flowchart TD
-    InputPDF([Input PDF]) --> Hasher{Is Duplicate Hash?}
+    InputPDF([Input PDF]) --> Hasher{"Is Duplicate Hash?"}
     Hasher -->|Yes| Skip[Skip Processing]
-    Hasher -->|No| Uploader[core/uploader.py]
-    Uploader --> Classifier[core/classifier.py]
+    Hasher -->|No| Uploader["core/uploader.py"]
+    Uploader --> Classifier["core/classifier.py"]
 
-    subgraph "Phase 1: Page-Level Extraction (Parallel ThreadPool)"
+    subgraph Phase1 ["Phase 1: Page-Level Extraction (Parallel ThreadPool)"]
         Classifier --> PagePool[ThreadPoolExecutor]
-        PagePool --> TextRouter{Is Scanned?}
-        TextRouter -->|No| NativeText[1. Native Text Extractor]
-        TextRouter -->|Yes| AzureVision[1. Azure Vision OCR (Retry Wrapper)]
+        PagePool --> TextRouter{"Is Scanned?"}
+        TextRouter -->|No| NativeText["1. Native Text Extractor"]
+        TextRouter -->|Yes| AzureVision["1. Azure Vision OCR (Retry Wrapper)"]
         
         NativeText --> PageText[Page Text & Images]
         AzureVision --> PageText
@@ -31,19 +31,19 @@ flowchart TD
         TableExt --> RawTables(Raw Page Tables)
     end
 
-    subgraph "Phase 2: Checkbox Extraction"
+    subgraph Phase2 ["Phase 2: Checkbox Extraction"]
         PageText --> FullText(Aggregated Full Text)
         FullText --> CheckboxExt[Checkbox Extractor]
         CheckboxExt --> RawCheckboxes(Raw Checkboxes)
     end
 
-    subgraph "Phase 3: Template Routing & KV Extraction"
-        FullText --> TempRouter{Match Built-in Static?}
+    subgraph Phase3 ["Phase 3: Template Routing & KV Extraction"]
+        FullText --> TempRouter{"Match Built-in Static?"}
         
-        TempRouter -->|No| CacheCheck{Fingerprint Match in Cache?}
+        TempRouter -->|No| CacheCheck{"Fingerprint Match in Cache?"}
         CacheCheck -->|Yes| LoadCache[Load Template]
         
-        CacheCheck -->|No| LLMGen[Azure OpenAI Generator (Retry Wrapper)]
+        CacheCheck -->|No| LLMGen["Azure OpenAI Generator (Retry Wrapper)"]
         RawCheckboxes -.->|Context for Checkbox Groups| LLMGen
         LLMGen --> SaveCache[(Save to Cache)]
         SaveCache --> LoadCache
@@ -54,13 +54,13 @@ flowchart TD
         ExecTemplate --> KVPairs(Extracted Key-Value Pairs)
     end
 
-    subgraph "Phase 4: Checkbox Grouping"
+    subgraph Phase4 ["Phase 4: Checkbox Grouping"]
         ExecTemplate -->|Provides LLM Groupings| CheckboxGroup[Group Checkboxes]
         RawCheckboxes --> CheckboxGroup
         CheckboxGroup --> RefinedCheckboxes(Categorized Checkboxes)
     end
 
-    subgraph "Phase 5: Persistence & Archival"
+    subgraph Phase5 ["Phase 5: Persistence & Archival"]
         KVPairs --> DB[(PostgreSQL Database)]
         RefinedCheckboxes --> DB
         RawTables --> DB
