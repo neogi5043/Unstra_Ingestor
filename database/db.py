@@ -50,19 +50,21 @@ def insert_document(conn, metadata):
 
     Args:
         conn: psycopg2 connection
-        metadata: dict with filename, template_type, page_count, classification
+        metadata: dict with doc_id (app-generated run_id), filename,
+                  content_hash, template_type, page_count, classification
 
     Returns:
-        str: doc_id (UUID)
+        str: doc_id (the same run_id that was passed in)
     """
+    doc_id = metadata["doc_id"]
     cur = conn.cursor()
     cur.execute(
         """
-        INSERT INTO documents (filename, content_hash, template_type, page_count, classification, status)
-        VALUES (%s, %s, %s, %s, %s, 'processing')
-        RETURNING doc_id
+        INSERT INTO documents (doc_id, filename, content_hash, template_type, page_count, classification, status)
+        VALUES (%s, %s, %s, %s, %s, %s, 'processing')
         """,
         (
+            doc_id,
             metadata["filename"],
             metadata.get("content_hash"),
             metadata.get("template_type"),
@@ -70,10 +72,9 @@ def insert_document(conn, metadata):
             Json(metadata.get("classification", {})) if metadata.get("classification") else None,
         ),
     )
-    doc_id = cur.fetchone()[0]
     conn.commit()
     cur.close()
-    logger.info("Inserted document: %s", doc_id)
+    logger.info("Inserted document with run_id/doc_id: %s", doc_id)
     return str(doc_id)
 
 
@@ -135,12 +136,20 @@ def insert_key_values(conn, doc_id, kv_pairs):
         return
     cur = conn.cursor()
     values = [
-        (doc_id, kv["key_name"], kv["value"], kv.get("page_number"), kv.get("confidence", 0.0))
+        (
+            doc_id, 
+            kv["field_id"],
+            kv["key_name"], 
+            kv["value"], 
+            kv.get("page_number"), 
+            kv.get("confidence", 0.0),
+            Json(kv.get("bounding_box", {})) if kv.get("bounding_box") else None
+        )
         for kv in kv_pairs
     ]
     execute_values(
         cur,
-        "INSERT INTO key_value_pairs (doc_id, key_name, value, page_number, confidence) VALUES %s",
+        "INSERT INTO key_value_pairs (doc_id, field_id, key_name, value, page_number, confidence, bounding_box) VALUES %s",
         values,
     )
     conn.commit()
@@ -159,12 +168,19 @@ def insert_checkboxes(conn, doc_id, checkboxes):
         return
     cur = conn.cursor()
     values = [
-        (doc_id, cb["label"], cb["is_checked"], cb["page_number"])
+        (
+            doc_id, 
+            cb["field_id"],
+            cb["label"], 
+            cb["is_checked"], 
+            cb["page_number"],
+            Json(cb.get("bounding_box", {})) if cb.get("bounding_box") else None
+        )
         for cb in checkboxes
     ]
     execute_values(
         cur,
-        "INSERT INTO checkboxes (doc_id, label, is_checked, page_number) VALUES %s",
+        "INSERT INTO checkboxes (doc_id, field_id, label, is_checked, page_number, bounding_box) VALUES %s",
         values,
     )
     conn.commit()

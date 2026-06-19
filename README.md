@@ -6,14 +6,16 @@ An end-to-end Python pipeline designed to ingest unstructured PDF documents (tex
 - **Page-Level Classification**: Intelligently classifies pages as `text`, `scanned`, or `text_with_images` to optimize the extraction process.
 - **Hybrid Extraction**: Uses `pdfplumber` for native text/table extraction and **Azure OpenAI Vision** for Optical Character Recognition (OCR) on scanned pages or embedded images.
 - **Concurrent Processing**: Drastically reduces processing time by utilizing `ThreadPoolExecutor` to process PDF pages in parallel.
+- **Run ID Traceability**: Every pipeline execution generates a unique `run_id` (`uuid4`) at the very start, before any extraction or DB interaction. This ID is stored as `doc_id` in PostgreSQL and threaded through all log messages, result payloads, and error handlers for end-to-end traceability.
 - **Duplicate Detection**: Uses SHA-256 binary hashing to fingerprint documents immediately, skipping processing for identical files.
 - **Template Matching**: Auto-detects document types using cross-file fingerprint matching. Ships with 3 active built-in templates and a general fallback.
 - **LLM-Powered Dynamic Templates & Auto-Anchor**: Unknown PDFs are automatically sent to **Azure OpenAI**. Instead of generating brittle regex directly, the LLM identifies the raw string values of key fields. The pipeline then automatically generates robust, **Auto-Anchored Regex** patterns and caches them for future use.
 - **Quality Gates & Resilience**: Includes a confidence-based extraction quality gate that logs warnings for low-confidence documents. All Azure API calls are protected by robust retry logic (`tenacity`) with exponential backoff.
-- **Multi-Tier Table Extraction**: Utilizes **Azure Vision** as the primary engine to extract highly accurate structural table grids into JSON. For documents where visual tables aren't found, it gracefully falls back to native `pdfplumber` metadata.
-- **Signature & Checkbox Intelligence**: Identifies embedded signatures using OpenCV Edge Density Variance. Resolves visual checkbox groups into semantic Key-Value elections natively.
+- **Multi-Tier Table Extraction**: Utilizes the **Unified Spatial Engine** to extract complex tables via coordinate clustering based on LLM Table Hints. For natively generated PDFs with perfect physical grid lines, it utilizes a fast `pdfplumber` fallback.
+- **Unified Spatial Parsing Engine**: Replaces brittle regex with a robust Textract-style `LINE` block spatial engine (`spatial_parser.py`). It natively handles **multi-line key-value pairs** and **multi-line checkbox labels** by clustering coordinates and wrapping text horizontally and vertically.
+- **Signature & Checkbox Intelligence**: Identifies embedded signatures using OpenCV Edge Density Variance. Resolves visual checkbox groups into semantic Key-Value elections natively, while assigning globally unique `field_id`s to every extracted element for frontend traceability.
 - **Cloud Archival**: Automatically uploads the original ingested PDFs and the concatenated raw extracted text to an Azure Blob Storage container.
-- **Structured Data Persistence**: Maps the extracted unstructured data into a structured relational PostgreSQL database, keeping track of job `status`, `error_log`, and `quality_score`.
+- **Structured Data Persistence**: Maps the extracted unstructured data into a structured relational PostgreSQL database. The `doc_id` primary key is the app-generated `run_id`, not a database-generated UUID — enabling traceability from the first log line. Tracks job `status`, `error_log`, and `quality_score`.
 
 ## Prerequisites
 - **Python**: 3.12+
@@ -111,7 +113,9 @@ The pipeline uses a **3-tier matching strategy**:
 - `core/`
   - `uploader.py` - Validates and loads PDFs.
   - `classifier.py` - Determines page type to route it to the correct extractor.
-  - `template_matcher.py` - Identifies templates (static + dynamic) using fingerprint scoring. Extracts keys via regex and parses LLM table hints.
+  - `spatial_parser.py` - Core spatial engine mapping coordinates into `LINE` blocks for robust multi-line Checkbox and Key-Value extraction.
+  - `table_clusterer.py` - Primary spatial table extraction engine using purely geometric X/Y coordinate-based clustering bounded by LLM hints.
+  - `template_matcher.py` - Identifies templates (static + dynamic) using fingerprint scoring. Extracts keys via spatial anchoring and parses LLM table hints.
   - `llm_template_generator.py` - Manages template generation logic and caching (imports Azure OpenAI client from `llm/`).
   - `election_resolver.py` - Resolves checkbox groups into structured key-value "election" pairs.
   - `extraction_validator.py` - Cross-field validation to catch logical inconsistencies in extracted data.
@@ -123,8 +127,8 @@ The pipeline uses a **3-tier matching strategy**:
 - `extractors/`
   - `text_extractor.py` - Extracts text from native PDF text layers.
   - `ocr_extractor.py` - Extracts unstructured text via Azure OpenAI Vision.
-  - `table_extractor.py` - Extracts tables using pdfplumber natively.
-  - `checkbox_extractor.py` - Detects and categorizes checkboxes using regex and LLM groupings.
+  - `table_extractor.py` - Fallback engine extracting tables natively using pdfplumber on physical gridlines.
+  - `checkbox_extractor.py` - Detects and categorizes checkboxes using layout analysis and LLM groupings, yielding elements with unique `field_id`s.
   - `label_value_parser.py` - Line-based fallback parser for "Label: Value" pairs on noisy OCR text.
 - `database/`
   - `db.py` - Handles connection and inserts to PostgreSQL.

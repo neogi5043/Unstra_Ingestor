@@ -46,7 +46,8 @@ flowchart TD
         TableExt --> ExtTables(Extracted Tables)
         
         RawText -.-> CheckboxExt[checkbox_extractor.py: Detect Checkbox Geometries]
-        CheckboxExt --> RawCheckboxes(Raw Checkboxes)
+        CheckboxExt --> SpatialEngine[spatial_parser.py: Build LINE blocks & extract multi-line]
+        SpatialEngine --> RawCheckboxes(Raw Checkboxes with field_id)
     end
 
     subgraph "Phase 2: Template Routing & Generation"
@@ -56,7 +57,7 @@ flowchart TD
         TempRouter{Match Built-in Static Templates?}:::logic
         AggrText --> TempRouter
         
-        TempRouter -->|Yes| StaticExec[template_matcher.py: Apply Static Regex Patterns]
+        TempRouter -->|Yes| StaticExec[template_matcher.py: Apply Static Spatial Anchors]
         
         TempRouter -->|No| CacheCheck{Fingerprint Match in Cached JSON Templates?}:::logic
         CacheCheck -->|Yes| LoadCache[Load Cached JSON Template]
@@ -65,12 +66,18 @@ flowchart TD
         LLMGen --> SaveCache[Save JSON to generated_templates/]
         SaveCache --> LoadCache
         
-        LoadCache --> DynamicExec[template_matcher.py: Apply Auto-Anchored Regex]
+        LoadCache --> DynamicExec[template_matcher.py: Apply Spatial Anchors via spatial_parser.py]
     end
 
     subgraph "Phase 3: Data Extraction & Resolution"
-        StaticExec --> RawKV(Raw Key-Value Pairs)
+        StaticExec --> RawKV(Raw Key-Value Pairs with field_id)
         DynamicExec --> RawKV
+        
+        LLMTableHints(LLM Table Hints)
+        LoadCache -.-> LLMTableHints
+        LLMTableHints --> SpatialTableCluster[table_clusterer.py: Spatial X/Y Clustering]
+        RawText -.-> SpatialTableCluster
+        SpatialTableCluster --> ExtTables
         
         LLMGroups(LLM Checkbox Groupings)
         LoadCache -.-> LLMGroups

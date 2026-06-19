@@ -147,6 +147,35 @@ def extract_page_text(page, layout: bool = False) -> str:
     return _normalise_extracted_text(text)
 
 
+def extract_page_text_and_words(page, page_number: int) -> tuple[str, list[dict]]:
+    """
+    Extract text and the spatial word array from a pdfplumber page.
+    """
+    try:
+        text = page.extract_text() or ""
+        raw_words = page.extract_words(extra_attrs=["size", "fontname"]) or []
+    except Exception as e:
+        logger.warning("extract_page_text_and_words failed: %s", e)
+        return "", []
+        
+    cleaned_text = _normalise_extracted_text(text)
+    
+    words = []
+    for w in raw_words:
+        clean_word = w.get("text", "").strip()
+        if clean_word:
+            words.append({
+                "text": clean_word,
+                "x0": float(w.get("x0", 0)),
+                "y0": float(w.get("top", 0)),
+                "x1": float(w.get("x1", 0)),
+                "y1": float(w.get("bottom", 0)),
+                "page": page_number
+            })
+            
+    return cleaned_text, words
+
+
 def extract_page_text_layout(page) -> str:
     """
     Layout-preserving text extraction convenience wrapper.

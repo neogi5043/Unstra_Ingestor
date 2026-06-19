@@ -80,12 +80,12 @@ def _normalise_text(text: str) -> str:
 _LEAD = r"(?:(?:^)|(?<=[^\w]))"
 
 # Label — what comes after the marker.
-# We restrict this to 1-30 words to capture full sentence labels without gobbling the whole page.
-# The separator allows spaces and common punctuation, but STRICTLY EXCLUDES
-# brackets (), [], {}, <> to prevent gobbling the next checkbox marker.
+# We restrict this to 1-3 words to act as a spatial ANCHOR.
+# The spatial_parser will use this anchor to find the physical location
+# and grab the rest of the label up to the next visual gap.
 _LABEL = (
     r"("
-    r"(?:\b\w+\b[\s,:\-\.\'%/&\"’“”+$]*){1,30}"
+    r"(?:\b\w+\b[\s,:\-\.\'%/&\"’“”+$]*){1,3}"
     r")"
 )
 
@@ -217,48 +217,45 @@ CHECKBOX_PATTERNS: list[tuple[re.Pattern, bool]] = [
 # Public API
 # ─────────────────────────────────────────────────────────────────────────────
 
-def extract_checkboxes(text: str, page_number: int) -> list[dict]:
+from core.spatial_parser import find_anchor, extract_checkbox_label
+
+def extract_checkboxes(page_data: dict, page_number: int) -> list[dict]:
     """
-    Scan *text* for checkbox patterns and return structured results.
-
-    Args:
-        text:        Extracted text from a page (text-layer or OCR output).
-        page_number: 1-indexed page number — passed through to each result.
-
-    Returns:
-        List of dicts, each containing:
-            label       – stripped label text following the checkbox marker
-            is_checked  – True / False
-            page_number – as supplied
-
-    Notes:
-        • Text is NFC-normalised and CRLF/CR-normalised before matching.
-        • Deduplication key is (label_lowercased, is_checked) — the same
-          label appearing as both checked AND unchecked on the same page
-          produces two results.
-        • Span tracking prevents two patterns from firing on the same
-          character position (e.g. a bare ✓ inside "[✓]" being matched
-          twice).
-        • Trailing punctuation ( . , ; : ) is stripped from labels.
+    Scan for checkbox patterns using Regex, then use spatial parsing for boundaries and bounding boxes.
     """
-    text = _normalise_text(text)
+    text = _normalise_text(page_data.get("text", ""))
+    words = page_data.get("words", [])
 
     found: list[dict] = []
     seen_labels: set[tuple[str, bool]] = set()   # (normalised_label, is_checked)
     seen_starts: set[int] = set()                # match start positions (char index)
 
+    # Use UUID for unique checkbox IDs
+    import uuid
+
     for pattern, is_checked in CHECKBOX_PATTERNS:
         for m in pattern.finditer(text):
-            # Skip if a higher-priority pattern already consumed this position
             if m.start() in seen_starts:
                 continue
 
-            label = m.group(1).strip().rstrip(".,;:")
-            if not label:
+            anchor_text = m.group(1).strip().rstrip(".,;:")
+            if not anchor_text:
                 continue
+                
+            label = anchor_text
+            bbox = None
+            
+            # Spatial Extraction (if words available)
+            if words:
+                anchor_words = find_anchor(words, anchor_text, page_number)
+                if anchor_words:
+                    full_label_text, full_label_bbox = extract_checkbox_label(words, anchor_words, page_number)
+                    if full_label_text:
+                        label = full_label_text
+                        bbox = full_label_bbox
 
             # Clean up newlines and excessive spaces in the final label output
-            label = re.sub(r"\s+", " ", label)
+            label = re.sub(r"\s+", " ", label).strip()
 
             # Normalise for dedup (case-fold)
             norm_label = label.lower()
@@ -268,11 +265,17 @@ def extract_checkboxes(text: str, page_number: int) -> list[dict]:
 
             seen_labels.add(dedup_key)
             seen_starts.add(m.start())
+            
+            # Generate a stable unique ID
+            cb_id = f"checkbox_{uuid.uuid4().hex[:8]}"
+            
             found.append(
                 {
+                    "field_id": cb_id,
                     "label": label,
                     "is_checked": is_checked,
                     "page_number": page_number,
+                    "bounding_box": bbox
                 }
             )
 

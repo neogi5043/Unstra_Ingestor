@@ -1,0 +1,81 @@
+{
+  "source_filename": "TEST Case 1_Knight Train Loan_Policy.pdf",
+  "document_type": "401(k) Plan Loan Administration Policy",
+  "generated_at": "2026-06-19T07:25:21.605248",
+  "model_used": "gpt-4.1-mini",
+  "fingerprints": [
+    "401(k) Plan Loan Administration Policy",
+    "Loan origination fee in the amount of $50.00",
+    "The interest rate on all loans made under this policy",
+    "Scheduled payments must be made by payroll deduction",
+    "Loans are only permitted in the case of financial hardship",
+    "This Loan Administration Policy has been developed to comply"
+  ],
+  "keys": {
+    "Plan Name": "Plan\\ Name[\\s:]*([^\\n]+)",
+    "Plan Number": "Plan\\ Number[\\s:]*([\\d/\\-]+)",
+    "Loan origination fee": "loan\\ origination\\ fee\\ in\\ the\\ amount\\ of[\\s:]*([^\\n]+)",
+    "Maintenance fee": "maintenance\\ fee\\ of[\\s:]*([^\\n]+)",
+    "Minimum loan amount": "loan\\ amount\\ that\\ a\\ participant\\ may\\ request\\ is[\\s:]*([^\\n]+)",
+    "Maximum loan amount": "loan\\ amount\\ that\\ a\\ participant\\ may\\ request\\ is[\\s:]*([^\\n]+)",
+    "General Purpose Loan term": "term\\ of[\\s:]*([^\\n]+)",
+    "Principal Residence Loan term": "term\\ of[\\s:]*([^\\n]+)",
+    "Interest rate": "rate\\ on\\ all\\ loans\\ made\\ under\\ this\\ policy\\ will\\ be[\\s:]*([^\\n]+)"
+  },
+  "tables": [
+    {
+      "name": "Loan Fees and Charges",
+      "section_context": "Article II. Cost",
+      "header_pattern": "(Loan origination fee in the amount of \\$50\\.00)",
+      "expected_columns": [
+        "Fee Type",
+        "Amount",
+        "Frequency/Notes"
+      ]
+    },
+    {
+      "name": "Loan Types and Terms",
+      "section_context": "Article VII. Types of loans available",
+      "header_pattern": "(A General Purpose Loan has a term of twelve to sixty \\(12-60\\) months)",
+      "expected_columns": [
+        "Loan Type",
+        "Term (months)",
+        "Purpose",
+        "Interest Rate"
+      ]
+    },
+    {
+      "name": "Payment Options for Partial Loan Prepayments",
+      "section_context": "Section 9.10 Partial Loan Prepayments",
+      "header_pattern": "(Option A - Advance Payments Through Payroll Withholding)",
+      "expected_columns": [
+        "Option",
+        "Description",
+        "Conditions"
+      ]
+    }
+  ],
+  "checkbox_groups": {
+    "Loan Purpose Restrictions": [
+      "Loans are only permitted in the case of financial hardship. Applicants must",
+      "Loans may not be refinanced."
+    ],
+    "Loan Offset Options Upon Termination": [
+      "Option A. In the event that a participant defers distribution of their account",
+      "Option B. The participant may continue to repay the loan by making loan"
+    ],
+    "Partial Loan Prepayment Options": [
+      "Option A - Advance",
+      "Option B - Principal"
+    ],
+    "Partial Loan Prepayment Application": [
+      "According to the current amortization schedule. Payments may not be",
+      "First to the current payment due, and then to the outstanding principal"
+    ],
+    "Loan Limits and Conditions": [
+      "A participant may have 3 loans outstanding at one time.",
+      "The maximum available loan will be calculated based upon all vested",
+      "The interest rate on all loans will be 1 % over Prime Rate as described in"
+    ]
+  }
+}

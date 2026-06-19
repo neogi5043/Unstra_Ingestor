@@ -13,9 +13,11 @@ For **unknown PDFs** that don't match any built-in template, the system dynamica
 
 ```mermaid
 flowchart TD
-    InputPDF([Input PDF]) --> Hasher{"Is Duplicate Hash?"}
+    InputPDF([Input PDF]) --> RunID["Generate run_id (uuid4)"]
+    RunID --> Hasher{"Is Duplicate Hash?"}
     Hasher -->|Yes| Skip[Skip Processing]
-    Hasher -->|No| Uploader["core/uploader.py"]
+    Hasher -->|No| InitDB["Insert doc_id=run_id into DB (status=processing)"]
+    InitDB --> Uploader["core/uploader.py"]
     Uploader --> Classifier["core/classifier.py"]
 
     subgraph Phase1 ["Phase 1: Page-Level Extraction (Parallel ThreadPool)"]
@@ -73,26 +75,30 @@ flowchart TD
 ```
 
 ### Flow Breakdown
-1. **Deduplication**: Immediately calculates a SHA-256 hash of the input binary. If the `content_hash` already exists in PostgreSQL, processing is skipped.
-2. **Ingestion**: `core/uploader.py` validates the file type, checks file integrity, and opens the document via `pdfplumber`.
-3. **Classification**: `core/classifier.py` evaluates the density of the text layer on a given page versus the presence of embedded images to flag the page type.
-4. **Phase 1: Page-Level Extraction (Parallel)**:
+1. **Run ID Generation**: At the very start of `process_pdf()`, a `run_id` is generated via `uuid.uuid4()` in Python. This `run_id` is threaded through every step of the pipeline — logging, extraction, DB persistence, blob archival, and error handling — providing end-to-end traceability. It is stored as `doc_id` in the database.
+2. **Deduplication**: Calculates a SHA-256 hash of the input binary. If the `content_hash` already exists in PostgreSQL, processing is skipped.
+3. **DB Init**: A preliminary `documents` row is inserted with `doc_id = run_id` and `status = 'processing'` before extraction begins, ensuring the run is tracked even if it fails.
+4. **Ingestion**: `core/uploader.py` validates the file type, checks file integrity, and opens the document via `pdfplumber`.
+5. **Classification**: `core/classifier.py` evaluates the density of the text layer on a given page versus the presence of embedded images to flag the page type.
+6. **Phase 1: Page-Level Extraction (Parallel)**:
     - Utilizes `concurrent.futures.ThreadPoolExecutor` to process all pages concurrently, heavily optimizing ingestion speed for large documents.
     - **Native Text**: Handled purely by `extractors/text_extractor.py`.
     - **Images & Scans**: Handled by `extractors/ocr_extractor.py` which uses **Azure OpenAI Vision** for high-accuracy, layout-preserving text recognition (wrapped in `tenacity` retries).
-    - **Tables**: `extractors/table_extractor.py` utilizes **Azure Vision** as the primary engine for highly accurate structural extraction, falling back to `pdfplumber` if needed.
+    - **Tables (Gridline Fallback)**: `extractors/table_extractor.py` utilizes `pdfplumber` for highly accurate extraction on PDFs with physical grid lines. For tables lacking grid lines, extraction is deferred to Phase 5.
     - **Signatures & Images**: During iteration, embedded images undergo an OpenCV Edge Density Variance check. High variance images are cropped, classified using Azure Vision (e.g. "Signature", "Logo"), and converted to Base64. Low variance images are forwarded to Azure Vision for text extraction.
-5. **Phase 2: Checkbox Extraction**:
-    - `extractors/checkbox_extractor.py` loops over the extracted text to find visual box markers using highly-accurate regex (supporting long labels up to 30 words and common punctuation).
-6. **Phase 3: Template Routing & KV Extraction**:
+7. **Phase 2: Checkbox Extraction**:
+    - `extractors/checkbox_extractor.py` detects visual box markers (☑, ☐) and utilizes the `spatial_parser.py` engine to resolve multi-line wrapped labels based on geometric horizontal and vertical relationships. Every extracted checkbox element is assigned a globally unique UUID4 `field_id` for frontend traceability.
+8. **Phase 3: Template Routing & KV Extraction**:
     - **Tier 1 — Static Templates**: `core/template_matcher.py` scores the aggregated text against 3 active hardcoded templates (plus a general fallback).
     - **Tier 2 — Cached Generated Templates**: The system checks `generated_templates/` and scores fingerprints of previously saved JSON templates against the new document text. If one matches, it reuses the logic.
-    - **Tier 3 — LLM Generation**: `core/llm_template_generator.py` sends the extracted text **and the raw extracted checkboxes** to Azure OpenAI to generate auto-anchored regex patterns, table hints, and precise logical checkbox groupings based directly on visually detected elements.
-    - **Execution & Quality Gate**: The matched template is applied to the aggregated text to extract Key-Value pairs. A `quality_score` is computed (0.0 - 1.0) based on fields found versus fields expected.
-7. **Phase 4: Checkbox Grouping**:
+    - **Tier 3 — LLM Generation**: `core/llm_template_generator.py` sends the extracted text **and the raw extracted checkboxes** to Azure OpenAI to generate spatial text anchors, table hints, and precise logical checkbox groupings based directly on visually detected elements.
+    - **Execution & Quality Gate**: The matched template anchors are executed via `spatial_parser.py`'s `extract_multiline_value` logic to robustly extract multi-line Key-Value pairs without bleeding into adjacent fields. A `quality_score` is computed (0.0 - 1.0) based on fields found versus fields expected. Every KV pair receives a unique `field_id`.
+9. **Phase 4: Checkbox Grouping**:
     - The active Template applies context groupings to categorize the raw checkboxes (e.g. mapping "Option A" into the "Prepayments" category) via `core/election_resolver.py`.
-8. **Phase 5: Persistence & Archival**: 
-    - `database/db.py` inserts all structural results into a relational database, tracking `status` (`processing`, `COMPLETED`, `FAILED`), `content_hash`, and `error_log`.
+10. **Phase 5: Spatial Table Extraction**:
+    - For dynamically generated templates with `table_hints`, `core/table_clusterer.py` geometrically clusters the unified `Word Array` into dynamic rows and columns bounded by the hints.
+11. **Phase 6: Validation, Persistence & Archival**: 
+    - `database/db.py` inserts all structural results into a relational database using the `run_id` as `doc_id`, tracking `status` (`processing`, `COMPLETED`, `FAILED`), `content_hash`, and `error_log`. All log messages include `[run_id=...]` for traceability.
     - `core/blob_uploader.py` uploads the original PDF to `raw_files/` and the aggregated text to `raw_txt_files/` within Azure Blob Storage (can be skipped with `--skip-blob`).
 
 ---
@@ -108,21 +114,30 @@ Fallback engine for rasterized pages, embedded images, table extraction, and ima
 - **Engine**: **Azure OpenAI Vision** (`gpt-4.1-mini` or equivalent multimodal model). It processes raw image crops and returns structured text, tabular JSON data, or image semantic classification, bypassing unstable local OCR libraries.
 
 ### `extractors/table_extractor.py`
-Primary table extraction engine.
-- **Engine**: **Azure Vision** handles structural table extraction via JSON output. For pages where no visual tables are recognized, it provides a fallback to `pdfplumber` metadata extraction.
+Fallback engine for PDFs with explicitly drawn physical gridlines.
+- **Engine**: Handles structural table extraction via native `pdfplumber` for pages with visual tables.
+
+### `core/table_clusterer.py`
+Primary spatial table extraction engine for borderless or scanned tables.
+- **Engine**: Performs purely geometric, X/Y coordinate-based clustering on the unified `Word Array` to detect rows and dynamically merge overlapping text into columns.
+
+### `core/spatial_parser.py`
+The unified structural engine of the ingestor.
+- **Line Block Construction**: Translates raw word bounding boxes into `LINE` blocks by clustering words that share vertical overlap.
+- **KV & Checkbox Wrapping**: Evaluates indentation and horizontal placement to extract full multi-line values (e.g. multi-line addresses) or multi-line checkbox labels. Implements strict heuristics to prevent capturing sibling keys accidentally.
 
 ### `core/template_matcher.py`
 The brain behind translating unstructured text strings into business data.
 - **Static Fingerprints**: Uses an array of strings unique to a document type (e.g., `"ADOPTION AGREEMENT #006"`). The template with the most fingerprint matches "wins".
-- **Regex Registry**: Once a template is won, it executes a dictionary of specific Regex patterns designed for that document format to reliably pull structured values like `Employer Name`, `Plan Number`, etc. It intelligently attributes the correct `page_number` to each extracted key.
+- **Spatial Anchoring Registry**: Once a template is won, it relies on spatial text anchors (e.g. `Client Address:`) designed for that document format to reliably pull structured values via the spatial parser.
 - **Dynamic Template Support**: For templates prefixed with `generated:`, loads the template from a JSON file in `generated_templates/` instead of the hardcoded `TEMPLATES` dict.
 - **LLM Table Hints**: `get_llm_table_hints()` provides metadata about expected tables (column names, section context) from generated templates.
 
 ### `core/llm_template_generator.py`
 Azure OpenAI integration for dynamic template generation when no built-in template matches.
-- **Auto-Anchored Regex**: The LLM prompt explicitly instructs it to return the exact raw string value of a field (e.g. `"JOHN DOE"`). A programmatic local function searches the text for the value, finds its preceding label, and automatically generates an anchored, safe Regex pattern (`Label:\s*(.*)`). This eliminates LLM regex hallucinations and token limits.
+- **Spatial Auto-Anchoring**: The LLM prompt explicitly instructs it to return the exact raw string value of a field (e.g. `"JOHN DOE"`). A programmatic local function searches the text for the value, finds its preceding label, and establishes it as a robust structural Anchor (e.g. `Name:`). This eliminates LLM spatial hallucinations and token limits.
 - **Caching & Fingerprinting**: Templates are saved as JSON files in `generated_templates/` and reused across different files utilizing unique text fingerprint scoring.
-- **Output Format**: Each generated template includes fingerprints, auto-anchored key-value regex patterns, and table structure hints.
+- **Output Format**: Each generated template includes fingerprints, anchor text definitions, and table structure hints.
 
 ### `llm/llm_client.py` and `llm/prompt.py`
 - **`llm_client.py`**: Centralized initialization logic for `AzureOpenAI` client, ensuring 180s timeouts are applied.
@@ -223,7 +238,7 @@ erDiagram
     DOCUMENTS ||--o{ IMAGE_FLAGS : has
 
     DOCUMENTS {
-        uuid doc_id PK
+        uuid doc_id PK "app-generated run_id"
         varchar filename
         varchar content_hash
         varchar template_type
@@ -286,7 +301,7 @@ erDiagram
 ```
 
 ### Table Overview
-- **`documents`**: Tracks processing jobs, file origins, template type (static or `generated:` prefixed). PK is `doc_id` (UUID). Includes `content_hash` for deduplication, `status` (`COMPLETED`, `FAILED`), `error_log` for stack traces, and `quality_score` (0.0 to 1.0) assessing extraction success.
+- **`documents`**: Tracks processing jobs, file origins, template type (static or `generated:` prefixed). PK is `doc_id` (UUID), which is generated in the Python application layer as `run_id` via `uuid.uuid4()` at the start of each pipeline run — **not** auto-generated by PostgreSQL. This provides end-to-end traceability from the first log line through DB persistence. Includes `content_hash` for deduplication, `status` (`processing`, `COMPLETED`, `FAILED`), `error_log` for stack traces, and `quality_score` (0.0 to 1.0) assessing extraction success.
 - **`raw_pages`**: Acts as a caching and debugging layer. Stores the raw text strings parsed out by page for auditing.
 - **`key_value_pairs`**: The primary structured data output table. Includes a `confidence` field (1.0 for static templates, 0.85 for LLM-generated).
 - **`extracted_tables`**: Stores tabular grids as `jsonb` payloads.

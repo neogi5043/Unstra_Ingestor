@@ -5,7 +5,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";   -- for gen_random_uuid()
 
 -- ── Master table: one row per ingested document ──────────────────
 CREATE TABLE IF NOT EXISTS documents (
-    doc_id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    doc_id          UUID PRIMARY KEY,    -- app-generated (run_id from Python)
     filename        VARCHAR(255) NOT NULL,
     content_hash    VARCHAR(64) UNIQUE,
     template_type   VARCHAR(100),
@@ -18,22 +18,28 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 
 -- ── Extracted key-value pairs ────────────────────────────────────
-CREATE TABLE IF NOT EXISTS key_value_pairs (
+DROP TABLE IF EXISTS key_value_pairs CASCADE;
+CREATE TABLE key_value_pairs (
     id              SERIAL PRIMARY KEY,
     doc_id          UUID REFERENCES documents(doc_id) ON DELETE CASCADE,
+    field_id        VARCHAR(255) NOT NULL,
     key_name        VARCHAR(255),
     value           TEXT,
     page_number     INTEGER,
-    confidence      FLOAT
+    confidence      FLOAT,
+    bounding_box    JSONB
 );
 
 -- ── Checkbox detections ──────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS checkboxes (
+DROP TABLE IF EXISTS checkboxes CASCADE;
+CREATE TABLE checkboxes (
     id              SERIAL PRIMARY KEY,
     doc_id          UUID REFERENCES documents(doc_id) ON DELETE CASCADE,
+    field_id        VARCHAR(255) NOT NULL,
     label           TEXT,
     is_checked      BOOLEAN,
-    page_number     INTEGER
+    page_number     INTEGER,
+    bounding_box    JSONB
 );
 
 -- ── Extracted tables (stored as JSON) ────────────────────────────

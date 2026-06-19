@@ -13,6 +13,7 @@ import json
 import logging
 import hashlib
 import traceback
+import uuid
 import concurrent.futures
 import warnings
 
@@ -59,14 +60,30 @@ def process_page_worker(filepath, info):
         page = thread_pdf.pages[page_num - 1]
         
         page_text = ""
+        page_words = []
         page_image_flags = []
         
         if page_type == "text":
             page_text = extract_page_text(page)
+            page_words = page.extract_words(x_tolerance=2.0, y_tolerance=3.0)
+            for w in page_words:
+                w["page"] = page_num
+                if "y0" not in w and "top" in w:
+                    w["y0"] = w["top"]
+                if "y1" not in w and "bottom" in w:
+                    w["y1"] = w["bottom"]
         elif page_type == "scanned":
             page_text = ocr_page(page)
+            # OCR word extraction is unsupported for now
         elif page_type == "text_with_images":
             page_text = extract_page_text(page)
+            page_words = page.extract_words(x_tolerance=2.0, y_tolerance=3.0)
+            for w in page_words:
+                w["page"] = page_num
+                if "y0" not in w and "top" in w:
+                    w["y0"] = w["top"]
+                if "y1" not in w and "bottom" in w:
+                    w["y1"] = w["bottom"]
             embedded = extract_page_images(page)
             for img_info in embedded:
                 w, h = img_info["width"], img_info["height"]
@@ -123,6 +140,7 @@ def process_page_worker(filepath, info):
         "page_number": page_num,
         "type": page_type,
         "text": page_text,
+        "words": page_words,
         "tables": page_tables,
         "image_flags": page_image_flags
     }
@@ -144,6 +162,7 @@ def process_pdf(filepath, use_db=True, skip_blob=False):
         file_bytes = f.read()
     content_hash = hashlib.sha256(file_bytes).hexdigest()
 
+    run_id = str(uuid.uuid4())
     doc_id = None
     if use_db:
         from database.db import get_connection, check_document_exists, insert_document, update_document
@@ -155,6 +174,7 @@ def process_pdf(filepath, use_db=True, skip_blob=False):
             return {"error": "Duplicate document", "doc_id": existing_doc}
             
         doc_id = insert_document(conn, {
+            "doc_id": run_id,
             "filename": os.path.basename(filepath),
             "content_hash": content_hash,
             "page_count": None,
@@ -191,15 +211,18 @@ def process_pdf(filepath, use_db=True, skip_blob=False):
             pages.append({
                 "page_number": res["page_number"],
                 "type": res["type"],
-                "text": res["text"]
+                "text": res["text"],
+                "words": res["words"]
             })
-            image_flags.extend(res["image_flags"])
-            all_tables.extend(res["tables"])
+            if res.get("image_flags"):
+                image_flags.extend(res["image_flags"])
+            if res.get("tables"):
+                all_tables.extend(res["tables"])
     
         # ── 4. Checkbox extraction ───────────────────────────────────
         all_checkboxes = []
         for p in pages:
-            all_checkboxes += extract_checkboxes(p["text"], p["page_number"])
+            all_checkboxes += extract_checkboxes(p, p["page_number"])
     
         # ── 5. Template matching + KV extraction ─────────────────────
         full_text = "\n".join(p["text"] for p in pages)
@@ -252,11 +275,18 @@ def process_pdf(filepath, use_db=True, skip_blob=False):
             logger.warning("Election resolver failed (non-fatal): %s", e)
     
     
-        # ── 6. Log LLM table hints (for generated templates) ───────
+        # ── 6. Spatial Table Extraction (using LLM hints) ────────────
         table_hints = get_llm_table_hints(template_name)
         if table_hints:
-            logger.info("LLM table hints available: %s",
-                        [t.get('name', 'unnamed') for t in table_hints])
+            logger.info("[run_id=%s] Executing Spatial Table Extraction based on %d hints...", run_id, len(table_hints))
+            from core.table_clusterer import extract_spatial_tables
+            all_words = []
+            for p in pages:
+                all_words.extend(p["words"])
+            spatial_tables = extract_spatial_tables(all_words, table_hints)
+            if spatial_tables:
+                logger.info("[run_id=%s] Extracted %d tables via Spatial Clusterer.", run_id, len(spatial_tables))
+                all_tables.extend(spatial_tables)
     
         # ── 7. Build classification summary for DB ───────────────────
         classification_summary = {
@@ -330,6 +360,7 @@ def process_pdf(filepath, use_db=True, skip_blob=False):
     
     except Exception as e:
         logger.error("Pipeline failed: %s", e)
+        traceback.print_exc()
         if use_db and doc_id:
             try:
                 conn = get_connection()
