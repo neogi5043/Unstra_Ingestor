@@ -13,7 +13,9 @@ An end-to-end Python pipeline designed to ingest unstructured PDF documents (tex
 - **Quality Gates & Resilience**: Includes a confidence-based extraction quality gate that logs warnings for low-confidence documents. All Azure API calls are protected by robust retry logic (`tenacity`) with exponential backoff.
 - **Multi-Tier Table Extraction**: Utilizes the **Unified Spatial Engine** to extract complex tables via coordinate clustering based on LLM Table Hints. For natively generated PDFs with perfect physical grid lines, it utilizes a fast `pdfplumber` fallback.
 - **Unified Spatial Parsing Engine**: Replaces brittle regex with a robust Textract-style `LINE` block spatial engine (`spatial_parser.py`). It natively handles **multi-line key-value pairs** and **multi-line checkbox labels** by clustering coordinates and wrapping text horizontally and vertically.
-- **Signature & Checkbox Intelligence**: Identifies embedded signatures using OpenCV Edge Density Variance. Resolves visual checkbox groups into semantic Key-Value elections natively, while assigning globally unique `field_id`s to every extracted element for frontend traceability.
+- **LLM Post-Processing Cleanup**: Includes an optional pass (`--llm-cleanup`) that uses Azure OpenAI to correct OCR noise, typographical errors, and stitch abruptly broken sentences on extracted text right before database insertion, while strictly preserving facts and numbers.
+- **Signature & Checkbox Intelligence**: Identifies embedded signatures using OpenCV Edge Density Variance. Resolves visual checkbox groups into semantic Key-Value elections natively.
+- **Unified UUID Schema**: Every single extracted element across all 4 database tables (Key-Value pairs, Checkboxes, Tables, and Image Flags) is assigned a mathematically unique `uuid4` as its `field_id` to guarantee 100% downstream frontend traceability.
 - **Cloud Archival**: Automatically uploads the original ingested PDFs and the concatenated raw extracted text to an Azure Blob Storage container.
 - **Structured Data Persistence**: Maps the extracted unstructured data into a structured relational PostgreSQL database. The `doc_id` primary key is the app-generated `run_id`, not a database-generated UUID — enabling traceability from the first log line. Tracks job `status`, `error_log`, and `quality_score`.
 
@@ -90,6 +92,16 @@ python main.py "path/to/your/document.pdf" --no-db
 python main.py "path/to/your/document.pdf" --skip-blob
 ```
 
+**Run with LLM Text Cleanup Pass:**
+```bash
+python main.py "path/to/your/document.pdf" --llm-cleanup
+```
+
+**Bypass Deduplication (Force Processing):**
+```bash
+python main.py "path/to/your/document.pdf" --force
+```
+
 ## How Template Matching Works
 
 The pipeline uses a **3-tier matching strategy**:
@@ -118,6 +130,7 @@ The pipeline uses a **3-tier matching strategy**:
   - `template_matcher.py` - Identifies templates (static + dynamic) using fingerprint scoring. Extracts keys via spatial anchoring and parses LLM table hints.
   - `llm_template_generator.py` - Manages template generation logic and caching (imports Azure OpenAI client from `llm/`).
   - `election_resolver.py` - Resolves checkbox groups into structured key-value "election" pairs.
+  - `post_processor.py` - Manages the batch LLM cleanup pass to correct OCR noise and abrupt sentence breaks on extracted values.
   - `extraction_validator.py` - Cross-field validation to catch logical inconsistencies in extracted data.
   - `field_validators.py` - Lightweight field-type validators for TIN/EIN, amounts, and plan numbers.
   - `blob_uploader.py` - Handles uploading original PDFs and extracted text to Azure Blob Storage.

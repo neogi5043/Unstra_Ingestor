@@ -270,14 +270,18 @@ def extract_key_values(pages, template_name):
         if "words" in p:
             all_words.extend(p["words"])
 
-    for field_id, field_def in template["keys"].items():
+    import uuid
+    for raw_field_id, field_def in template["keys"].items():
+        # User explicitly requested UUID for field_id instead of schema identifiers
+        field_id = str(uuid.uuid4())
+        
         # Handle structured vs raw string definitions
         if isinstance(field_def, dict):
-            display_name = field_def.get("display_name", field_id)
+            display_name = field_def.get("display_name", raw_field_id)
             anchor = field_def.get("anchor")
             pattern = field_def.get("pattern")
         else:
-            display_name = field_id
+            display_name = raw_field_id
             anchor = None
             pattern = field_def
 

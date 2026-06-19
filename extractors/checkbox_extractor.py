@@ -267,7 +267,7 @@ def extract_checkboxes(page_data: dict, page_number: int) -> list[dict]:
             seen_starts.add(m.start())
             
             # Generate a stable unique ID
-            cb_id = f"checkbox_{uuid.uuid4().hex[:8]}"
+            cb_id = str(uuid.uuid4())
             
             found.append(
                 {

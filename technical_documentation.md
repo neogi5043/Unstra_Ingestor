@@ -62,9 +62,10 @@ flowchart TD
         CheckboxGroup --> RefinedCheckboxes(Categorized Checkboxes)
     end
 
-    subgraph Phase5 ["Phase 5: Persistence & Archival"]
-        KVPairs --> DB[(PostgreSQL Database)]
-        RefinedCheckboxes --> DB
+    subgraph Phase5 ["Phase 5: Post-Processing & Persistence"]
+        KVPairs --> LLMCleanup["LLM Cleanup Pass (Optional)"]
+        RefinedCheckboxes --> LLMCleanup
+        LLMCleanup --> DB[(PostgreSQL Database)]
         RawTables --> DB
         PageText --> DB
         
@@ -97,9 +98,10 @@ flowchart TD
     - The active Template applies context groupings to categorize the raw checkboxes (e.g. mapping "Option A" into the "Prepayments" category) via `core/election_resolver.py`.
 10. **Phase 5: Spatial Table Extraction**:
     - For dynamically generated templates with `table_hints`, `core/table_clusterer.py` geometrically clusters the unified `Word Array` into dynamic rows and columns bounded by the hints.
-11. **Phase 6: Validation, Persistence & Archival**: 
-    - `database/db.py` inserts all structural results into a relational database using the `run_id` as `doc_id`, tracking `status` (`processing`, `COMPLETED`, `FAILED`), `content_hash`, and `error_log`. All log messages include `[run_id=...]` for traceability.
-    - `core/blob_uploader.py` uploads the original PDF to `raw_files/` and the aggregated text to `raw_txt_files/` within Azure Blob Storage (can be skipped with `--skip-blob`).
+11. **Phase 6: Validation, Post-Processing & Persistence**: 
+    - **LLM Cleanup Pass**: If `--llm-cleanup` is enabled, `core/post_processor.py` intercepts the raw extracted text (KVs and Checkboxes) and sends a batch JSON payload to Azure OpenAI to safely correct OCR typographical errors and stitch abruptly broken sentences.
+    - **Database Persistence**: `database/db.py` inserts all structural results into a relational database using the `run_id` as `doc_id`, tracking `status` (`processing`, `COMPLETED`, `FAILED`), `content_hash`, and `error_log`. All log messages include `[run_id=...]` for traceability. Every single extracted element (KV, Table, Checkbox, Image Flag) is natively assigned a unique UUID `field_id`.
+    - **Blob Archival**: `core/blob_uploader.py` uploads the original PDF to `raw_files/` and the aggregated text to `raw_txt_files/` within Azure Blob Storage (can be skipped with `--skip-blob`).
 
 ---
 
@@ -125,6 +127,11 @@ Primary spatial table extraction engine for borderless or scanned tables.
 The unified structural engine of the ingestor.
 - **Line Block Construction**: Translates raw word bounding boxes into `LINE` blocks by clustering words that share vertical overlap.
 - **KV & Checkbox Wrapping**: Evaluates indentation and horizontal placement to extract full multi-line values (e.g. multi-line addresses) or multi-line checkbox labels. Implements strict heuristics to prevent capturing sibling keys accidentally.
+
+### `core/post_processor.py`
+Manages the optional LLM-based post-processing pass.
+- **Batch Cleaning**: Consolidates extracted KV and Checkbox strings into a single JSON payload.
+- **OCR Correction**: Prompts the LLM to safely stitch abruptly broken sentences and clean formatting noise without mutating factual data or numbers.
 
 ### `core/template_matcher.py`
 The brain behind translating unstructured text strings into business data.

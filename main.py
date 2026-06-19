@@ -115,6 +115,7 @@ def process_page_worker(filepath, info):
                             flag = "unclassified_image"
                             
                         page_image_flags.append({
+                            "field_id": str(uuid.uuid4()),
                             "page_number": page_num,
                             "image_index": img_info["index"],
                             "width": w,
@@ -145,7 +146,7 @@ def process_page_worker(filepath, info):
         "image_flags": page_image_flags
     }
 
-def process_pdf(filepath, use_db=True, skip_blob=False):
+def process_pdf(filepath, use_db=True, skip_blob=False, llm_cleanup=False, force_process=False):
     """
     Full ingestion pipeline for a single PDF.
 
@@ -153,6 +154,8 @@ def process_pdf(filepath, use_db=True, skip_blob=False):
         filepath: path to the PDF file
         use_db: if False, skip DB insert and print results
         skip_blob: if True, skip Azure Blob upload
+        llm_cleanup: if True, run LLM post-processing
+        force_process: if True, bypass deduplication checks
 
     Returns:
         dict with all extracted data
@@ -161,17 +164,22 @@ def process_pdf(filepath, use_db=True, skip_blob=False):
     with open(filepath, "rb") as f:
         file_bytes = f.read()
     content_hash = hashlib.sha256(file_bytes).hexdigest()
-
     run_id = str(uuid.uuid4())
     doc_id = None
+
+    if force_process:
+        content_hash = f"force_{run_id.replace('-', '')}{content_hash[38:]}"
+        logger.info("Force processing enabled. Mutated content_hash to bypass DB unique constraints.")
+
     if use_db:
         from database.db import get_connection, check_document_exists, insert_document, update_document
         conn = get_connection()
-        existing_doc = check_document_exists(conn, content_hash)
-        if existing_doc:
-            logger.warning("Duplicate document detected (content_hash=%s). doc_id: %s", content_hash, existing_doc)
-            conn.close()
-            return {"error": "Duplicate document", "doc_id": existing_doc}
+        if not force_process:
+            existing_doc = check_document_exists(conn, content_hash)
+            if existing_doc:
+                logger.warning("Duplicate document detected (content_hash=%s). doc_id: %s", content_hash, existing_doc)
+                conn.close()
+                return {"error": "Duplicate document", "doc_id": existing_doc}
             
         doc_id = insert_document(conn, {
             "doc_id": run_id,
@@ -288,6 +296,33 @@ def process_pdf(filepath, use_db=True, skip_blob=False):
                 logger.info("[run_id=%s] Extracted %d tables via Spatial Clusterer.", run_id, len(spatial_tables))
                 all_tables.extend(spatial_tables)
     
+        # ── 6.5 LLM Clean-Up Post-Processing ─────────────────────────
+        if llm_cleanup:
+            logger.info("[run_id=%s] Executing LLM Post-Processing Cleanup...", run_id)
+            from core.post_processor import clean_extracted_data
+            
+            # Bundle non-null values
+            cleanup_payload = {}
+            for kv in kv_pairs:
+                if kv.get("value"):
+                    cleanup_payload[kv["field_id"]] = kv["value"]
+            for cb in all_checkboxes:
+                if cb.get("label"):
+                    cleanup_payload[cb["field_id"]] = cb["label"]
+            
+            if cleanup_payload:
+                cleaned_payload = clean_extracted_data(cleanup_payload, full_text)
+                
+                # Map back to KV pairs
+                for kv in kv_pairs:
+                    if kv["field_id"] in cleaned_payload:
+                        kv["value"] = cleaned_payload[kv["field_id"]]
+                
+                # Map back to Checkboxes
+                for cb in all_checkboxes:
+                    if cb["field_id"] in cleaned_payload:
+                        cb["label"] = cleaned_payload[cb["field_id"]]
+
         # ── 7. Build classification summary for DB ───────────────────
         classification_summary = {
             str(info["page_number"]): info["type"]
@@ -436,11 +471,15 @@ if __name__ == "__main__":
         print("  python main.py --batch <directory>")
         print("  python main.py --no-db <pdf_path>")
         print("  python main.py --skip-blob <pdf_path>")
+        print("  python main.py --llm-cleanup <pdf_path>")
+        print("  python main.py --force <pdf_path>")
         sys.exit(1)
 
     use_db = True
     batch_mode = False
     skip_blob = False
+    llm_cleanup = False
+    force_process = False
 
     if "--no-db" in args:
         use_db = False
@@ -449,6 +488,14 @@ if __name__ == "__main__":
     if "--skip-blob" in args:
         skip_blob = True
         args.remove("--skip-blob")
+
+    if "--llm-cleanup" in args:
+        llm_cleanup = True
+        args.remove("--llm-cleanup")
+
+    if "--force" in args:
+        force_process = True
+        args.remove("--force")
 
     if "--batch" in args:
         batch_mode = True
@@ -466,6 +513,6 @@ if __name__ == "__main__":
         print(f"[main] Batch mode: found {len(pdf_files)} PDFs in {directory}")
         for pdf_path in pdf_files:
             print(f"\n{'─' * 60}")
-            process_pdf(pdf_path, use_db=use_db, skip_blob=skip_blob)
+            process_pdf(pdf_path, use_db=use_db, skip_blob=skip_blob, llm_cleanup=llm_cleanup, force_process=force_process)
     else:
-        process_pdf(args[0], use_db=use_db, skip_blob=skip_blob)
+        process_pdf(args[0], use_db=use_db, skip_blob=skip_blob, llm_cleanup=llm_cleanup, force_process=force_process)

@@ -1,4 +1,5 @@
 import re
+import uuid
 from core.spatial_parser import _boxes_intersect_vertically, _normalize_text
 
 def extract_spatial_tables(words: list[dict], table_hints: list[dict]) -> list[dict]:
@@ -109,6 +110,7 @@ def extract_spatial_tables(words: list[dict], table_hints: list[dict]) -> list[d
                 
             if len(rows) > 1:
                 tables.append({
+                    "field_id": str(uuid.uuid4()),
                     "table_index": len(tables) + 1,
                     "headers": rows[0],
                     "rows": rows[1:],

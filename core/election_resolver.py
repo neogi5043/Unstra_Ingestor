@@ -23,6 +23,7 @@ def resolve_elections(all_checkboxes: list[dict], template_name: str) -> list[di
         return []
         
     results = []
+    import uuid
     
     for group_name, options in groups.items():
         matched_options = []
@@ -45,7 +46,7 @@ def resolve_elections(all_checkboxes: list[dict], template_name: str) -> list[di
         if len(matched_options) == 1:
             # Perfect match: Exactly one option checked
             results.append({
-                "field_id": group_name.lower().replace(" ", "_"),
+                "field_id": str(uuid.uuid4()),
                 "key_name": group_name,
                 "value": matched_options[0],
                 "confidence": 0.95,
@@ -55,7 +56,7 @@ def resolve_elections(all_checkboxes: list[dict], template_name: str) -> list[di
         elif len(matched_options) > 1:
             # Conflict: Multiple options checked in a single-choice group
             results.append({
-                "field_id": group_name.lower().replace(" ", "_"),
+                "field_id": str(uuid.uuid4()),
                 "key_name": group_name,
                 "value": " | ".join(matched_options),
                 "confidence": 0.4,
@@ -65,7 +66,7 @@ def resolve_elections(all_checkboxes: list[dict], template_name: str) -> list[di
         else:
             # None checked or none found
             results.append({
-                "field_id": group_name.lower().replace(" ", "_"),
+                "field_id": str(uuid.uuid4()),
                 "key_name": group_name,
                 "value": None,
                 "confidence": 0.0,

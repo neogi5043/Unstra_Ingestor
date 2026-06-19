@@ -93,11 +93,14 @@ flowchart TD
         RawKV --> CombineKV
         ResolvedKV --> CombineKV
         
+        LLMCleanup[post_processor.py: Batch LLM Text Cleanup Pass]:::azure
         FieldVal[field_validators.py: Clean TINs, Amounts, Dates]:::logic
         ExtrVal[extraction_validator.py: Check Logical Consistencies]:::logic
         QualityGate[Compute Quality Score %]:::logic
         
-        CombineKV --> FieldVal
+        CombineKV --> LLMCleanup
+        RawCheckboxes -.-> LLMCleanup
+        LLMCleanup --> FieldVal
         FieldVal --> ExtrVal
         ExtrVal --> QualityGate
         QualityGate --> FinalKV(Validated Key-Values)

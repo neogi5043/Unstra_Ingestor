@@ -201,10 +201,10 @@ def insert_tables(conn, doc_id, tables):
     for t in tables:
         cur.execute(
             """
-            INSERT INTO extracted_tables (doc_id, table_index, page_number, headers, rows)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO extracted_tables (doc_id, field_id, table_index, page_number, headers, rows)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """,
-            (doc_id, t["table_index"], t["page_number"],
+            (doc_id, t.get("field_id"), t["table_index"], t["page_number"],
              Json(t["headers"]), Json(t["rows"])),
         )
     conn.commit()
@@ -223,14 +223,14 @@ def insert_image_flags(conn, doc_id, image_flags):
         return
     cur = conn.cursor()
     values = [
-        (doc_id, f["page_number"], f["image_index"], f["width"], f["height"],
+        (doc_id, f.get("field_id"), f["page_number"], f["image_index"], f["width"], f["height"],
          f.get("x0"), f.get("y0"), f.get("x1"), f.get("y1"), f.get("image_data"),
          f.get("flag", "signature_candidate"))
         for f in image_flags
     ]
     execute_values(
         cur,
-        "INSERT INTO image_flags (doc_id, page_number, image_index, width, height, x0, y0, x1, y1, image_data, flag) VALUES %s",
+        "INSERT INTO image_flags (doc_id, field_id, page_number, image_index, width, height, x0, y0, x1, y1, image_data, flag) VALUES %s",
         values,
     )
     conn.commit()

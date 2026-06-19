@@ -46,6 +46,7 @@ CREATE TABLE checkboxes (
 CREATE TABLE IF NOT EXISTS extracted_tables (
     id              SERIAL PRIMARY KEY,
     doc_id          UUID REFERENCES documents(doc_id) ON DELETE CASCADE,
+    field_id        VARCHAR(255),
     table_index     INTEGER,
     page_number     INTEGER,
     headers         JSONB,
@@ -66,6 +67,7 @@ DROP TABLE IF EXISTS image_flags CASCADE;
 CREATE TABLE image_flags (
     id              SERIAL PRIMARY KEY,
     doc_id          UUID REFERENCES documents(doc_id) ON DELETE CASCADE,
+    field_id        VARCHAR(255),
     page_number     INTEGER,
     image_index     INTEGER,
     width           INTEGER,
@@ -83,3 +85,6 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS content_hash VARCHAR(64) UNIQUE;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'processing';
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS error_log TEXT;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS quality_score FLOAT;
+
+ALTER TABLE extracted_tables ADD COLUMN IF NOT EXISTS field_id VARCHAR(255);
+ALTER TABLE image_flags ADD COLUMN IF NOT EXISTS field_id VARCHAR(255);
