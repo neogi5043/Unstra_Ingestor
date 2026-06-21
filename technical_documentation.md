@@ -82,15 +82,15 @@ flowchart TD
 4. **Ingestion**: `core/uploader.py` validates the file type, checks file integrity, and opens the document via `pdfplumber`.
 5. **Classification**: `core/classifier.py` evaluates the density of the text layer on a given page versus the presence of embedded images to flag the page type.
 6. **Phase 1: Page-Level Extraction (Parallel)**:
-    - Utilizes `concurrent.futures.ThreadPoolExecutor` to process all pages concurrently, heavily optimizing ingestion speed for large documents.
+    - Utilizes `concurrent.futures.ProcessPoolExecutor` to process all pages concurrently, heavily optimizing ingestion speed for large documents. Each worker opens its own `pdfplumber` instance from disk to avoid C-extension serialization issues.
     - **Native Text**: Handled purely by `extractors/text_extractor.py`.
     - **Images & Scans**: Handled by `extractors/ocr_extractor.py` which uses **Azure OpenAI Vision** for high-accuracy, layout-preserving text recognition (wrapped in `tenacity` retries).
-    - **Tables (Gridline Fallback)**: `extractors/table_extractor.py` utilizes `pdfplumber` for highly accurate extraction on PDFs with physical grid lines. For tables lacking grid lines, extraction is deferred to Phase 5.
+    - **Tables (Gridline Fallback)**: `extractors/table_extractor.py` utilizes Azure OpenAI Vision as the primary strategy, with `pdfplumber` as a fallback for text-layer PDFs with physical grid lines. For tables lacking grid lines, extraction is deferred to Phase 5.
     - **Signatures & Images**: During iteration, embedded images undergo an OpenCV Edge Density Variance check. High variance images are cropped, classified using Azure Vision (e.g. "Signature", "Logo"), and converted to Base64. Low variance images are forwarded to Azure Vision for text extraction.
 7. **Phase 2: Checkbox Extraction**:
     - `extractors/checkbox_extractor.py` detects visual box markers (☑, ☐) and utilizes the `spatial_parser.py` engine to resolve multi-line wrapped labels based on geometric horizontal and vertical relationships. Every extracted checkbox element is assigned a globally unique UUID4 `field_id` for frontend traceability.
 8. **Phase 3: Template Routing & KV Extraction**:
-    - **Tier 1 — Static Templates**: `core/template_matcher.py` scores the aggregated text against 3 active hardcoded templates (plus a general fallback).
+    - **Tier 1 — Static Templates**: `core/template_matcher.py` scores the aggregated text against any active hardcoded templates in the `TEMPLATES` registry (currently all templates are LLM-generated; static templates can be re-enabled by uncommenting blocks in `template_matcher.py`).
     - **Tier 2 — Cached Generated Templates**: The system checks `generated_templates/` and scores fingerprints of previously saved JSON templates against the new document text. If one matches, it reuses the logic.
     - **Tier 3 — LLM Generation**: `core/llm_template_generator.py` sends the extracted text **and the raw extracted checkboxes** to Azure OpenAI to generate spatial text anchors, table hints, and precise logical checkbox groupings based directly on visually detected elements.
     - **Execution & Quality Gate**: The matched template anchors are executed via `spatial_parser.py`'s `extract_multiline_value` logic to robustly extract multi-line Key-Value pairs without bleeding into adjacent fields. A `quality_score` is computed (0.0 - 1.0) based on fields found versus fields expected. Every KV pair receives a unique `field_id`.
@@ -116,8 +116,8 @@ Fallback engine for rasterized pages, embedded images, table extraction, and ima
 - **Engine**: **Azure OpenAI Vision** (`gpt-4.1-mini` or equivalent multimodal model). It processes raw image crops and returns structured text, tabular JSON data, or image semantic classification, bypassing unstable local OCR libraries.
 
 ### `extractors/table_extractor.py`
-Fallback engine for PDFs with explicitly drawn physical gridlines.
-- **Engine**: Handles structural table extraction via native `pdfplumber` for pages with visual tables.
+Primary table extraction engine using Azure Vision with pdfplumber as fallback.
+- **Engine**: Attempts Azure OpenAI Vision extraction first (rasterizes page, sends to Vision API for structured JSON). Falls back to native `pdfplumber` for text-layer pages when Vision finds no tables.
 
 ### `core/table_clusterer.py`
 Primary spatial table extraction engine for borderless or scanned tables.
@@ -147,7 +147,7 @@ Azure OpenAI integration for dynamic template generation when no built-in templa
 - **Output Format**: Each generated template includes fingerprints, anchor text definitions, and table structure hints.
 
 ### `llm/llm_client.py` and `llm/prompt.py`
-- **`llm_client.py`**: Centralized initialization logic for `AzureOpenAI` client, ensuring 180s timeouts are applied.
+- **`llm_client.py`**: Centralized initialization logic for `AzureOpenAI` client, ensuring 180s request timeouts and 15s connect timeouts are applied.
 - **`prompt.py`**: Houses the highly-engineered System Prompt demanding strict JSON outputs following best-practice prompting architectures for GPT-4o-mini (`gpt-4.1-mini`).
 
 ### `core/blob_uploader.py`
@@ -168,8 +168,8 @@ Lightweight field-type validators.
 - **Logic**: Cleans and validates common field types: TIN/EIN (9-digit formatting), monetary amounts (strips non-numeric), plan numbers (zero-padded 3-digit).
 
 ### `extractors/label_value_parser.py`
-Line-based fallback parser for noisy OCR text.
-- **Logic**: When regex-based KV extraction fails, this parser searches for simple `Label: Value` patterns on individual lines, tolerating OCR layout breakages.
+Line-based fallback parser for noisy OCR text (utility module, not currently wired into the main pipeline).
+- **Logic**: When regex-based KV extraction fails, this parser can search for simple `Label: Value` patterns on individual lines, tolerating OCR layout breakages. Available for manual integration on a per-template basis.
 
 ---
 
@@ -268,10 +268,12 @@ erDiagram
     KEY_VALUE_PAIRS {
         serial id PK
         uuid doc_id FK
+        varchar field_id "UUID for frontend traceability"
         varchar key_name
         text value
         integer page_number
         float confidence
+        jsonb bounding_box
     }
     
     EXTRACTED_TABLES {
@@ -286,14 +288,17 @@ erDiagram
     CHECKBOXES {
         serial id PK
         uuid doc_id FK
+        varchar field_id "UUID for frontend traceability"
         text label
         boolean is_checked
         integer page_number
+        jsonb bounding_box
     }
 
     IMAGE_FLAGS {
         serial id PK
         uuid doc_id FK
+        varchar field_id
         integer page_number
         integer image_index
         integer width
@@ -310,10 +315,10 @@ erDiagram
 ### Table Overview
 - **`documents`**: Tracks processing jobs, file origins, template type (static or `generated:` prefixed). PK is `doc_id` (UUID), which is generated in the Python application layer as `run_id` via `uuid.uuid4()` at the start of each pipeline run — **not** auto-generated by PostgreSQL. This provides end-to-end traceability from the first log line through DB persistence. Includes `content_hash` for deduplication, `status` (`processing`, `COMPLETED`, `FAILED`), `error_log` for stack traces, and `quality_score` (0.0 to 1.0) assessing extraction success.
 - **`raw_pages`**: Acts as a caching and debugging layer. Stores the raw text strings parsed out by page for auditing.
-- **`key_value_pairs`**: The primary structured data output table. Includes a `confidence` field (1.0 for static templates, 0.85 for LLM-generated).
-- **`extracted_tables`**: Stores tabular grids as `jsonb` payloads.
-- **`checkboxes`**: Normalizes boolean checkboxes.
-- **`image_flags`**: Tracks valid, meaningful images (logos, signatures) bypassing blank scans using Edge Density checks. Saves the physical coordinates (`x0, y0, x1, y1`) and the exact visual element encoded as a Base64 string in `image_data`.
+- **`key_value_pairs`**: The primary structured data output table. Includes a `field_id` (UUID) for frontend traceability, `bounding_box` (JSONB) for spatial coordinates, and a `confidence` field (1.0 for static templates, 0.85 for LLM-generated).
+- **`extracted_tables`**: Stores tabular grids as `jsonb` payloads, with an optional `field_id` for element-level tracking.
+- **`checkboxes`**: Normalizes boolean checkboxes, with `field_id` (UUID) and `bounding_box` (JSONB) for spatial traceability.
+- **`image_flags`**: Tracks valid, meaningful images (logos, signatures) bypassing blank scans using Edge Density checks. Includes `field_id`, physical coordinates (`x0, y0, x1, y1`), and the exact visual element encoded as a Base64 string in `image_data`.
 
 ---
 
@@ -333,7 +338,7 @@ erDiagram
 ### Performance Considerations
 - The current bottleneck is Azure OpenAI API latency, as it is heavily relied upon for OCR, table extraction, image classification, and dynamic template generation. For large-scale batch processing, it is highly recommended to wrap `process_pdf()` inside a task queue like Celery or RQ to enable parallel, multi-worker ingestion.
 - LLM template generation calls add ~2-5 seconds per unknown document on first encounter. Subsequent encounters load the cached JSON template in <1ms.
-- Text sent to the LLM is truncated to 8,000 characters (configurable via `LLM_TEXT_SAMPLE_LIMIT`) to stay within token limits while capturing enough content for field identification.
+- Text sent to the LLM is truncated to 12,000 characters (configurable via `LLM_TEXT_SAMPLE_LIMIT`) to stay within token limits while capturing enough content for field identification.
 
 ### Future Enhancements
 - **Fingerprint-based matching**: Use LLM-generated fingerprints to match new filenames to existing generated templates (e.g., `Invoice_Feb.pdf` auto-matches the template generated for `Invoice_Jan.pdf`).

@@ -1,0 +1,25 @@
+{
+  "source_filename": "printable-acord-applications-7.pdf",
+  "document_type": "ACORD Commercial Insurance Application",
+  "generated_at": "2026-06-19T15:11:48.037622",
+  "model_used": "gpt-4.1-mini",
+  "fingerprints": [
+    "ACORD® COMMERCIAL INSURANCE APPLICATION",
+    "AGENCY CUSTOMER ID",
+    "STATUS OF TRANSACTION",
+    "INDICATE LINES OF BUSINESS"
+  ],
+  "keys": {
+    "DATE (MM/DD/YYYY)": "DATE\\ \\(MM/DD/YYYY\\)[\\s:]*([\\d/\\-]+)",
+    "AGENCY": "AGENCY[\\s:]*([A-Za-z ]{1,100})",
+    "CARRIER": "CARRIER[\\s:]*([A-Za-z ]{1,100})",
+    "COMPANY POLICY OR PROGRAM NAME": "COMPANY\\ POLICY\\ OR\\ PROGRAM\\ NAME[\\s:]*([^\\n]+)",
+    "POLICY NUMBER": "POLICY\\ NUMBER[\\s:]*([^\\n]+)",
+    "CONTACT E-MAIL": "E\\-MAIL\\\nADDRESS:\\\nJeff\\ Turner\\\n908\\ 928\\ 3357[\\s:]*([^\\n]+)",
+    "UNDERWRITER": "UNDERWRITER[\\s:]*([A-Za-z ]{1,100})",
+    "STATUS OF TRANSACTION": "TRANSACTION[\\s:]*([A-Za-z ]{1,100})",
+    "AGENCY CUSTOMER ID": "AGENCY\\ CUSTOMER\\ ID[\\s:]*([A-Za-z ]{1,100})"
+  },
+  "tables": [],
+  "checkbox_groups": {}
+}

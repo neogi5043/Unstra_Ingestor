@@ -86,6 +86,16 @@ def update_document(conn, doc_id, updates):
     """
     if not updates:
         return
+
+    # Whitelist allowed column names to prevent SQL injection
+    _ALLOWED_COLUMNS = {
+        "filename", "content_hash", "template_type", "page_count",
+        "classification", "status", "error_log", "quality_score",
+    }
+    invalid_cols = set(updates.keys()) - _ALLOWED_COLUMNS
+    if invalid_cols:
+        raise ValueError(f"Invalid column names for documents table: {invalid_cols}")
+
     cur = conn.cursor()
     
     # Handle JSONB serialization for classification if present

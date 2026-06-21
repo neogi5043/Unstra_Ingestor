@@ -11,7 +11,7 @@ from config import (
 logger = logging.getLogger("llm")
 
 def get_client():
-    """Create and return an Azure OpenAI client with a 60-second timeout."""
+    """Create and return an Azure OpenAI client with a 180-second timeout."""
     if not AZURE_OPENAI_API_KEY or not AZURE_OPENAI_ENDPOINT:
         raise RuntimeError(
             "[llm] Azure OpenAI not configured. "

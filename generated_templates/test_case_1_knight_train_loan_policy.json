@@ -1,24 +1,27 @@
 {
   "source_filename": "TEST Case 1_Knight Train Loan_Policy.pdf",
   "document_type": "401(k) Plan Loan Administration Policy",
-  "generated_at": "2026-06-19T08:32:30.097055",
+  "generated_at": "2026-06-19T16:05:28.503453",
   "model_used": "gpt-4.1-mini",
   "fingerprints": [
     "401(k) Plan Loan Administration Policy",
     "The interest rate on all loans made under this policy will be 1% over the Prime Rate",
     "Loans are only permitted in the case of financial hardship",
-    "A loan origination fee in the amount of $50.00 shall be deducted from the loan amount approved"
+    "A loan origination fee in the amount of $50.00 shall be deducted from the loan amount approved",
+    "Scheduled payments must be made by payroll deduction",
+    "This Loan Administration Policy has been developed to comply with the requirements of Internal Revenue Code section 72(p)"
   ],
   "keys": {
     "Plan Name": "Plan\\ Name[\\s:]*([^\\n]+)",
     "Plan Number": "Plan\\ Number[\\s:]*([\\d/\\-]+)",
-    "Loan origination fee": "loan\\ origination\\ fee\\ in\\ the\\ amount\\ of[\\s:]*([^\\n]+)",
-    "Minimum loan amount": "loan\\ amount\\ that\\ a\\ participant\\ may\\ request\\ is[\\s:]*([^\\n]+)",
-    "Maximum loan amount": "loan\\ amount\\ that\\ a\\ participant\\ may\\ request\\ is[\\s:]*([^\\n]+)",
-    "Number of loans permitted at one time": "at\\ one\\ time\\ is[\\s:]*([^\\n]+)",
-    "Loan term for General Purpose Loan": "General\\ Purpose\\ Loan\\ has\\ a\\ term\\ of[\\s:]*([^\\n]+)",
-    "Loan term for Principal Residence Loan": "Principal\\ Residence\\ Loan\\ has\\ a\\ term\\ of[\\s:]*([^\\n]+)",
-    "Interest rate on all loans": "rate\\ on\\ all\\ loans\\ made\\ under\\ this\\ policy\\ will\\ be[\\s:]*([^\\n]+)"
+    "Eligibility Minimum Vested Account Balance": "minimum\\ vested\\ account\\ balance\\ of[\\s:]*([^\\n]+)",
+    "Loan Origination Fee": "loan\\ origination\\ fee\\ in\\ the\\ amount\\ of[\\s:]*([^\\n]+)",
+    "Maintenance Fee": "maintenance\\ fee\\ of[\\s:]*([^\\n]+)",
+    "Minimum Loan Amount": "loan\\ amount\\ that\\ a\\ participant\\ may\\ request\\ is[\\s:]*([^\\n]+)",
+    "Maximum Loan Amount": "loan\\ amount\\ that\\ a\\ participant\\ may\\ request\\ is[\\s:]*([^\\n]+)",
+    "Interest Rate": "rate\\ on\\ all\\ loans\\ made\\ under\\ this\\ policy\\ will\\ be[\\s:]*([^\\n]+)",
+    "Partial Loan Prepayment Option B": "Option\\ B\\ \\-[\\s:]*([^\\n]+)",
+    "Military Leave Interest Rate": "interest\\ rate\\ on\\ the\\ loan\\ may\\ be\\\nreduced\\ to[\\s:]*([^\\n]+)"
   },
   "tables": [],
   "checkbox_groups": {
@@ -27,17 +30,11 @@
       "Option A. In the event that a participant defers distribution of their account",
       "Option B. The participant may continue to repay the loan by making loan"
     ],
-    "Loan Payment Options": [
-      "Option B - Principal",
-      "Option A - Advance",
+    "Partial Loan Prepayments": [
+      "Option A - Advance Payments Through Payroll Withholding",
       "According to the current amortization schedule. Payments may not be",
-      "First to the current payment due, and then to the outstanding principal"
-    ],
-    "Loan Policy Conditions": [
-      "A participant may have 3 loans outstanding at one time.",
-      "The maximum available loan will be calculated based upon all vested",
-      "The interest rate on all loans will be 1 % over Prime Rate as described in",
-      "Loans may not be refinanced."
+      "First to the current payment due, and then to the outstanding principal",
+      "Option B - Principal Reduction"
     ]
   }
 }

@@ -251,7 +251,7 @@ def process_pdf(filepath, use_db=True, skip_blob=False, llm_cleanup=False, force
                 if cleaned is not None:
                     kv["value"] = cleaned
     
-        # ── 5.1. Apply LLM Categories to Checkboxes ──────────────────
+        # ── 5.2. Apply LLM Categories to Checkboxes ──────────────────
         checkbox_groups = get_llm_checkbox_groups(template_name)
         if checkbox_groups:
             for cb in all_checkboxes:
@@ -374,7 +374,7 @@ def process_pdf(filepath, use_db=True, skip_blob=False, llm_cleanup=False, force
         else:
             _print_results(result)
     
-        # ── 10. Run extraction validator ─────────────────────────────
+        # ── 11. Run extraction validator ─────────────────────────────
         from core.extraction_validator import validate_extraction
         validation_warnings = validate_extraction(result)
         if validation_warnings:

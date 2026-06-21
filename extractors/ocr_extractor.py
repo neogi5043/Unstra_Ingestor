@@ -34,11 +34,23 @@ from config import (
     AZURE_OPENAI_API_VERSION,
 )
 
-ocr_engine = AzureOpenAI(
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    api_key=AZURE_OPENAI_API_KEY,
-    api_version=AZURE_OPENAI_API_VERSION,
-)
+_ocr_engine = None
+
+def _get_ocr_engine():
+    """Lazy-init the Azure OpenAI client for OCR/Vision calls."""
+    global _ocr_engine
+    if _ocr_engine is None:
+        if not AZURE_OPENAI_API_KEY or not AZURE_OPENAI_ENDPOINT:
+            raise RuntimeError(
+                "[ocr] Azure OpenAI not configured. "
+                "Set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT in .env"
+            )
+        _ocr_engine = AzureOpenAI(
+            azure_endpoint=AZURE_OPENAI_ENDPOINT,
+            api_key=AZURE_OPENAI_API_KEY,
+            api_version=AZURE_OPENAI_API_VERSION,
+        )
+    return _ocr_engine
 
 # ── Constants ──────────────────────────────────────────────────────────────
 _MIN_DIMENSION  = 10    # pixels — smaller images are pure noise
@@ -247,7 +259,8 @@ def ocr_image(pil_image: Image.Image, lang: str = "en") -> str:
         pil_image.save(buffered, format="PNG")
         b64_img = base64.b64encode(buffered.getvalue()).decode("utf-8")
         
-        response = ocr_engine.chat.completions.create(
+        client = _get_ocr_engine()
+        response = client.chat.completions.create(
             model=AZURE_OPENAI_DEPLOYMENT_NAME,
             messages=[
                 {
@@ -275,31 +288,6 @@ def ocr_image(pil_image: Image.Image, lang: str = "en") -> str:
         return ""
 
 
-def ocr_page_and_words(page, page_number: int) -> tuple[str, list[dict]]:
-    """
-    Convenience function: rasterize a page, preprocess, and run OCR (Azure for text, Tesseract for words).
-    
-    Args:
-        page: pdfplumber Page object
-        page_number: int page number
-        
-    Returns:
-        tuple: (extracted text string, list of word bounding box dicts)
-    """
-    pil_img = rasterize_page(page)
-    if not pil_img:
-        return "", []
-
-    prep_img = preprocess_image(pil_img)
-    if not prep_img:
-        return "", []
-
-    text = ocr_image(prep_img)
-    words = ocr_image_words(prep_img, page_number)
-    
-    return text, words
-
-
 def ocr_image_with_retry(
     pil_image: Image.Image,
 ) -> str:
@@ -309,44 +297,6 @@ def ocr_image_with_retry(
     """
     text = ocr_image(pil_image)
     return text
-
-
-def ocr_image_words(pil_image: Image.Image, page_number: int) -> list[dict]:
-    """
-    Run Tesseract to get word-level bounding boxes for spatial parsing.
-    Returns: list of {"text": str, "x0": float, "y0": float, "x1": float, "y1": float, "page": int}
-    """
-    if pil_image.size[0] < _MIN_DIMENSION or pil_image.size[1] < _MIN_DIMENSION:
-        return []
-        
-    try:
-        # pytesseract returns a dict with 'text', 'left', 'top', 'width', 'height', 'conf'
-        data = pytesseract.image_to_data(pil_image, output_type=pytesseract.Output.DICT)
-        words = []
-        n_boxes = len(data['text'])
-        for i in range(n_boxes):
-            # Only include words with confidence > 0
-            if int(data['conf'][i]) < 0:
-                continue
-                
-            text = data['text'][i].strip()
-            if text:
-                x0 = float(data['left'][i])
-                y0 = float(data['top'][i])
-                w = float(data['width'][i])
-                h = float(data['height'][i])
-                words.append({
-                    "text": text,
-                    "x0": x0,
-                    "y0": y0,
-                    "x1": x0 + w,
-                    "y1": y0 + h,
-                    "page": page_number
-                })
-        return words
-    except Exception as e:
-        logger.error("Tesseract ocr_image_words failed: %s", e)
-        return []
 
 
 def ocr_page(page_obj) -> str:
@@ -381,7 +331,8 @@ def classify_image_with_vision(pil_image: Image.Image) -> str:
         pil_image.save(buffered, format="PNG")
         b64_img = base64.b64encode(buffered.getvalue()).decode("utf-8")
         
-        response = ocr_engine.chat.completions.create(
+        client = _get_ocr_engine()
+        response = client.chat.completions.create(
             model=AZURE_OPENAI_DEPLOYMENT_NAME,
             messages=[
                 {
@@ -420,7 +371,8 @@ def extract_tables_with_vision(pil_image: Image.Image) -> list[dict]:
         pil_image.save(buffered, format="PNG")
         b64_img = base64.b64encode(buffered.getvalue()).decode("utf-8")
         
-        response = ocr_engine.chat.completions.create(
+        client = _get_ocr_engine()
+        response = client.chat.completions.create(
             model=AZURE_OPENAI_DEPLOYMENT_NAME,
             messages=[
                 {

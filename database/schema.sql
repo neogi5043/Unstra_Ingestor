@@ -18,8 +18,7 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 
 -- ── Extracted key-value pairs ────────────────────────────────────
-DROP TABLE IF EXISTS key_value_pairs CASCADE;
-CREATE TABLE key_value_pairs (
+CREATE TABLE IF NOT EXISTS key_value_pairs (
     id              SERIAL PRIMARY KEY,
     doc_id          UUID REFERENCES documents(doc_id) ON DELETE CASCADE,
     field_id        VARCHAR(255) NOT NULL,
@@ -31,8 +30,7 @@ CREATE TABLE key_value_pairs (
 );
 
 -- ── Checkbox detections ──────────────────────────────────────────
-DROP TABLE IF EXISTS checkboxes CASCADE;
-CREATE TABLE checkboxes (
+CREATE TABLE IF NOT EXISTS checkboxes (
     id              SERIAL PRIMARY KEY,
     doc_id          UUID REFERENCES documents(doc_id) ON DELETE CASCADE,
     field_id        VARCHAR(255) NOT NULL,
@@ -63,8 +61,7 @@ CREATE TABLE IF NOT EXISTS raw_pages (
 );
 
 -- ── Signature / image flags ──────────────────────────────────────
-DROP TABLE IF EXISTS image_flags CASCADE;
-CREATE TABLE image_flags (
+CREATE TABLE IF NOT EXISTS image_flags (
     id              SERIAL PRIMARY KEY,
     doc_id          UUID REFERENCES documents(doc_id) ON DELETE CASCADE,
     field_id        VARCHAR(255),
